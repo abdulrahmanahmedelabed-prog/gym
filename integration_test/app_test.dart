@@ -27,8 +27,9 @@ void main() {
     if (Platform.isAndroid) await binding.convertFlutterSurfaceToImage();
     await pumpFor(t, 500);
 
-    // أول تشغيل: شاشة الإعداد
+    // أول تشغيل: شاشة الإعداد. على الجوالات القديمة البطيئة قد يتأخر أول رسم، فننتظر أياً من الشاشتين
     final demo = find.text('جرّب ببيانات نادٍ تجريبي');
+    await waitFor(t, find.byWidgetPredicate((w) => w is Text && (w.data == 'جرّب ببيانات نادٍ تجريبي' || w.data == 'الرئيسية')), seconds: 120);
     if (demo.evaluate().isNotEmpty) {
       await shot('00_onboarding');
       await t.tap(demo);
