@@ -4,10 +4,26 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>لمسح بطاقات الأعضاء (QR) عند الدخول وتصوير الأعضاء</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>لاختيار صورة العضو أو شعار النادي</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>whatsapp</string>
+		<string>https</string>
+		<string>sms</string>
+		<string>tel</string>
+	</array>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>ar</string>
+		<string>en</string>
+	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Nadi Gym</string>
+	<string>نادي جيم</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>

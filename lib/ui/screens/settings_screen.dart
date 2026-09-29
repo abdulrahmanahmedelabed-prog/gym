@@ -266,7 +266,7 @@ class _AccessSettingsScreenState extends State<AccessSettingsScreen> with _AutoS
         for (var i = 0; i < windows.length; i++)
           ListTile(
             leading: Icon(windows[i].gender == 'f' ? Icons.female : Icons.male),
-            title: Text('${windows[i].gender == 'f' ? tr('السيدات') : tr('الرجال')}: ${hhmm(windows[i].from)} - ${hhmm(windows[i].to)}'),
+            title: Text('${windows[i].gender == 'f' ? tr('السيدات') : tr('الرجال')}: ${hhmmRange(windows[i].from, windows[i].to)}'),
             subtitle: Text(days(windows[i].weekdays)),
             trailing: IconButton(
               icon: const Icon(Icons.delete_outline),

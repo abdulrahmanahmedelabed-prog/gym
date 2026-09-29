@@ -199,7 +199,7 @@ class DemoData {
         final discount = rnd.nextDouble() < 0.15 ? roundMoney(p.price * 0.1) : 0.0;
         sub.discount = discount;
         final items = [
-          InvoiceItem(kind: ItemKind.subscription, refId: sub.id, description: '${p.name} (${dayKey(start)} → ${dayKey(end)})', unitPrice: p.price),
+          InvoiceItem(kind: ItemKind.subscription, refId: sub.id, description: '${p.name} (${dayKey(start)} – ${dayKey(end)})', unitPrice: p.price),
           if (first && p.registrationFee > 0) InvoiceItem(kind: ItemKind.registration, description: 'رسوم التسجيل', unitPrice: p.registrationFee),
         ];
         final inv = newInv(m, sub.createdAt, items, discount: discount);
@@ -293,7 +293,7 @@ class DemoData {
     // محاولات دخول مرفوضة (للتقارير)
     for (var k = 0; k < 25; k++) {
       final m = pick(mems);
-      checkins.add(Checkin(id: newId(), memberId: m.id, time: at(addDays(today, -rnd.nextInt(60)), 18), result: CheckinResult.expired, method: 'scan'));
+      checkins.add(Checkin(id: newId(), memberId: m.id, time: at(addDays(today, -1 - rnd.nextInt(60)), 18), result: CheckinResult.expired, method: 'scan'));
     }
 
     // ترقيم الفواتير والإيصالات بالترتيب الزمني

@@ -110,7 +110,7 @@ class _PlanFormScreenState extends State<PlanFormScreen> {
     if (p.kind == PlanKind.pt && p.visits == null) p.visits = 8;
     await g.putAll([
       p,
-      if (!isNew && oldPrice != p.price) g.auditEntry('price', '${p.name}: ${fmtMoney(oldPrice)} → ${fmtMoney(p.price)}'),
+      if (!isNew && oldPrice != p.price) g.auditEntry('price', '${p.name}: ${fmtMoney(oldPrice)} – ${fmtMoney(p.price)}'),
     ]);
     if (mounted) Navigator.pop(context);
   }
@@ -184,7 +184,7 @@ class _PlanFormScreenState extends State<PlanFormScreen> {
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: Text(tr('ساعات محددة (باقة صباحية/اقتصادية)')),
-          subtitle: p.hasTimeWindow ? Text('${hhmm(p.accessFrom!)} - ${hhmm(p.accessTo!)}') : null,
+          subtitle: p.hasTimeWindow ? Text(hhmmRange(p.accessFrom!, p.accessTo!)) : null,
           value: p.hasTimeWindow,
           onChanged: (v) => setState(() {
             p.accessFrom = v ? 6 * 60 : null;

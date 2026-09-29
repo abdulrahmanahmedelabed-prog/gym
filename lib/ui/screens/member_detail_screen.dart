@@ -400,7 +400,7 @@ class _SubCard extends StatelessWidget {
           SubProgress(daysTotal: s.totalDays, daysLeft: dl < 0 ? -1 : dl, visitsTotal: s.visitsTotal, visitsLeft: s.visitsLeft),
           const SizedBox(height: 8),
           Wrap(alignment: WrapAlignment.spaceBetween, spacing: 12, runSpacing: 4, children: [
-            Text('${fmtDay(s.start)} ← ${fmtDay(s.end)}', style: TextStyle(color: context.colors.onSurfaceVariant, fontSize: 13)),
+            Text('${fmtDay(s.start)} – ${fmtDay(s.end)}', style: TextStyle(color: context.colors.onSurfaceVariant, fontSize: 13)),
             if (s.freezeDaysAllowed > 0)
               Text(tr('تجميد متبقٍ: {n} يوم', {'n': s.freezeDaysLeft}), style: TextStyle(color: context.colors.onSurfaceVariant, fontSize: 12)),
           ]),
@@ -460,7 +460,7 @@ class _SubsTab extends StatelessWidget {
           leading: Icon(s.kind == PlanKind.pt ? Icons.sports : Icons.card_membership, color: color),
           title: Text(s.planName, style: const TextStyle(fontWeight: FontWeight.w700)),
           subtitle: Text([
-            '${fmtDay(s.start)} ← ${fmtDay(s.end)}',
+            '${fmtDay(s.start)} – ${fmtDay(s.end)}',
             if (s.visitsTotal != null) tr('{u} من {t} حصة', {'u': s.visitsUsed, 't': s.visitsTotal}),
             if (s.freezes.isNotEmpty) tr('جُمّد {n} يوم', {'n': s.freezeDaysUsed}),
             if (s.imported) tr('مستورد'),

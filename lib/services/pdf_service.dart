@@ -34,7 +34,7 @@ String zatcaTlv({
 }
 
 /// حذف الرموز التعبيرية (خط PDF لا يحتويها)
-String pdfSafe(String s) => s.replaceAll(RegExp(r'[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}]', unicode: true), '').trim();
+String pdfSafe(String s) => s.replaceAll(RegExp(r'[\u{1F000}-\u{1FFFF}\u{2190}-\u{21FF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}]', unicode: true), '').trim();
 
 class PdfFonts {
   final pw.Font regular;
@@ -151,7 +151,7 @@ class PdfService {
             pw.SizedBox(height: 8),
             _t(tr('جدول الأقساط'), bold: true, size: small),
             for (final x in inv.installmentStatus())
-              _row(dayKey(x.inst.due), x.left <= 0 ? '${fmtMoney(x.inst.amount)} ✓' : fmtMoney(x.inst.amount), size: small),
+              _row(dayKey(x.inst.due), x.left <= 0 ? '${fmtMoney(x.inst.amount)} (${tr('مدفوع')})' : fmtMoney(x.inst.amount), size: small),
           ]);
 
     final payList = pays.isEmpty
@@ -255,7 +255,7 @@ class PdfService {
       textDirection: _dir,
       build: (_) => [
         _t(s.gymName, size: 18, bold: true, color: _accent),
-        _t('${tr('تقرير الفترة')}: ${dayKey(r.from)} → ${dayKey(r.to)}', size: 12, bold: true),
+        _t('${tr('تقرير الفترة')}: ${dayKey(r.from)} – ${dayKey(r.to)}', size: 12, bold: true),
         pw.SizedBox(height: 12),
         _row(tr('المحصّل'), fmtMoney(rep.collected(r)), bold: true),
         for (final e in byMethod.entries) _row('   ${payMethodName(e.key)}', fmtMoney(e.value)),

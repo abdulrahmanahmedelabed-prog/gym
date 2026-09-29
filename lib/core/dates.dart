@@ -82,3 +82,6 @@ const weekdayNamesEn = {1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sa
 
 /// ترتيب أيام الأسبوع كما يراه المستخدم العربي (يبدأ بالسبت)
 const weekOrder = [6, 7, 1, 2, 3, 4, 5];
+
+/// مدى زمني يُعرض بترتيب صحيح داخل النص العربي، مثل 06:00–14:00
+String hhmmRange(int from, int to) => '\u2066${hhmm(from)}\u2013${hhmm(to)}\u2069';

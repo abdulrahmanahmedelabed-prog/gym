@@ -123,7 +123,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: ChoiceChip(
-                  label: Text(p == _Period.custom && _custom != null ? '${dayKey(_custom!.from)} ← ${dayKey(_custom!.to)}' : _pName(p)),
+                  label: Text(p == _Period.custom && _custom != null ? '${dayKey(_custom!.from)} – ${dayKey(_custom!.to)}' : _pName(p)),
                   selected: _p == p,
                   onSelected: (_) async {
                     if (p == _Period.custom) {
@@ -201,7 +201,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 child: SimpleBarChart(
                   values: [for (var h = 5; h < 24; h++) hours[h].toDouble()],
                   labels: [for (var h = 5; h < 24; h++) h % 3 == 0 ? '$h' : ''],
-                  tooltipTitles: [for (var h = 5; h < 24; h++) '${hhmm(h * 60)} - ${hhmm((h + 1) * 60 % 1440)}'],
+                  tooltipTitles: [for (var h = 5; h < 24; h++) hhmmRange(h * 60, (h + 1) * 60 % 1440)],
                   format: (v) => tr('{n} زيارة', {'n': v.toInt()}),
                   color: const Color(0xFF0EA5E9),
                 ),

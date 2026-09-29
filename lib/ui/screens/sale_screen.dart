@@ -25,7 +25,7 @@ String planSummary(Plan p) {
     if (p.kind == PlanKind.pt) tr('تدريب شخصي'),
     if (p.visits != null) tr('{n} حصة', {'n': p.visits}) else tr('دخول غير محدود'),
     dur,
-    if (p.hasTimeWindow) '${hhmm(p.accessFrom!)}-${hhmm(p.accessTo!)}',
+    if (p.hasTimeWindow) hhmmRange(p.accessFrom!, p.accessTo!),
   ];
   return parts.join(' • ');
 }
@@ -208,7 +208,7 @@ class _SaleScreenState extends State<SaleScreen> {
         Text(tr('الباقة'), style: context.text.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
         const SizedBox(height: 8),
         if (plans.isEmpty)
-          EmptyState(icon: Icons.inventory_outlined, title: tr('لا توجد باقات'), message: tr('أضف الباقات من «المزيد ← الباقات»')),
+          EmptyState(icon: Icons.inventory_outlined, title: tr('لا توجد باقات'), message: tr('أضف الباقات من «المزيد › الباقات»')),
         ResponsiveGrid(minWidth: 150, children: [
           for (final p in plans)
             _PlanCard(
@@ -226,7 +226,7 @@ class _SaleScreenState extends State<SaleScreen> {
             onChanged: (v) => setState(() => _trainer = v),
           ),
           if (trainers.isEmpty)
-            Padding(padding: const EdgeInsets.only(top: 6), child: Text(tr('أضف المدربين من «المزيد ← الموظفون والمدربون»'), style: TextStyle(color: context.colors.error))),
+            Padding(padding: const EdgeInsets.only(top: 6), child: Text(tr('أضف المدربين من «المزيد › الموظفون والمدربون»'), style: TextStyle(color: context.colors.error))),
         ],
         const SizedBox(height: 16),
         if (_plan != null)

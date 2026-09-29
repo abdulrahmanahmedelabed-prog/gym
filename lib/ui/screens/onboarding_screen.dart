@@ -82,7 +82,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     g.settings.onboarded = true;
     await g.putAll([...plans, owner], withSettings: true);
     g.applySettings();
-    if (mounted) context.toast(tr('جاهز! حدّد أسعار الباقات من «المزيد ← الباقات»'));
+    if (mounted) context.toast(tr('جاهز! حدّد أسعار الباقات من «المزيد › الباقات»'));
   }
 
   Future<void> _startDemo() async {

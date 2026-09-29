@@ -323,7 +323,7 @@ class MembershipService {
       InvoiceItem(
         kind: plan.kind == PlanKind.pt ? ItemKind.pt : ItemKind.subscription,
         refId: sub.id,
-        description: '${plan.name} (${dayKey(start)} → ${dayKey(end)})',
+        description: '${plan.name} (${dayKey(start)} – ${dayKey(end)})',
         unitPrice: plan.price,
       ),
       if (q.fee > 0) InvoiceItem(kind: ItemKind.registration, description: tr('رسوم التسجيل'), unitPrice: q.fee),
@@ -349,7 +349,7 @@ class MembershipService {
       if (refSub != null && refSub.statusOn(d.today) != SubStatus.expired) {
         refSub.end = addDays(refSub.end, d.settings.referralRewardDays);
         toSave.add(refSub);
-        toSave.add(d.auditEntry('referral', '${member.name} → +${d.settings.referralRewardDays}'));
+        toSave.add(d.auditEntry('referral', '${member.name} › +${d.settings.referralRewardDays}'));
       }
     }
     if (r.discount > 0) {
@@ -448,14 +448,14 @@ class MembershipService {
     if (!d.can(Perm.override)) throw GymException(tr('يحتاج صلاحية المدير'));
     final old = s.end;
     s.end = dateOnly(newEnd);
-    await d.putAll([s, d.auditEntry('adjust', '${d.members[s.memberId]?.name}: ${dayKey(old)} → ${dayKey(s.end)} — $reason')]);
+    await d.putAll([s, d.auditEntry('adjust', '${d.members[s.memberId]?.name}: ${dayKey(old)} – ${dayKey(s.end)} — $reason')]);
   }
 
   Future<void> adjustVisits(Subscription s, int used, String reason) async {
     if (!d.can(Perm.override)) throw GymException(tr('يحتاج صلاحية المدير'));
     final old = s.visitsUsed;
     s.visitsUsed = used < 0 ? 0 : used;
-    await d.putAll([s, d.auditEntry('adjust', '${d.members[s.memberId]?.name}: $old → $used — $reason')]);
+    await d.putAll([s, d.auditEntry('adjust', '${d.members[s.memberId]?.name}: $old – $used — $reason')]);
   }
 
   /// استيراد عضو باشتراك قائم من دفتر أو برنامج قديم (بدون فاتورة)

@@ -1,11 +1,11 @@
 {
-    "name": "nadi_gym",
-    "short_name": "nadi_gym",
+    "name": "نادي جيم",
+    "short_name": "نادي جيم",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "Gym management app: members, subscriptions, payments, invoices, WhatsApp & SMS reminders",
+    "background_color": "#0F766E",
+    "theme_color": "#0F766E",
+    "description": "إدارة النادي الرياضي: الأعضاء، الاشتراكات، الدفع، الفواتير، وتذكيرات واتساب",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
@@ -31,5 +31,7 @@
             "type": "image/png",
             "purpose": "maskable"
         }
-    ]
+    ],
+    "lang": "ar",
+    "dir": "rtl"
 }

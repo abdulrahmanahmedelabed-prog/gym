@@ -125,12 +125,12 @@ class CheckinService {
       if (otherActive.isNotEmpty) {
         final w = otherActive.first;
         return deny(CheckinResult.genderHours,
-            tr('الوقت الآن مخصص لـ {g} ({f} - {t})', {'g': _genderWord(w.gender), 'f': hhmm(w.from), 't': hhmm(w.to)}),
+            tr('الوقت الآن مخصص لـ {g} ({r})', {'g': _genderWord(w.gender), 'r': hhmmRange(w.from, w.to)}),
             sub: sub);
       }
       final own = windows.where((w) => w.gender == g).toList();
       if (own.isNotEmpty && d.settings.data['genderStrict'] != false && !own.any(covers)) {
-        final times = own.map((w) => '${hhmm(w.from)}-${hhmm(w.to)}').toSet().join('، ');
+        final times = own.map((w) => hhmmRange(w.from, w.to)).toSet().join('، ');
         return deny(CheckinResult.genderHours, tr('أوقات {g}: {t}', {'g': _genderWord(g), 't': times}), sub: sub);
       }
     }
