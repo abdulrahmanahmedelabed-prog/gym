@@ -4,6 +4,10 @@ set -x
 mkdir -p emulator-shots
 # صلاحية root في المحاكي فقط: لفحص أن الحذف لا يترك ملفات في مجلد التطبيق الخاص
 adb root >/dev/null 2>&1; sleep 3; adb wait-for-device
+# منع «التحقق من التطبيقات» عند التثبيت عبر adb (قد يعلّق التثبيت على المحاكيات القديمة)
+adb shell settings put global package_verifier_enable 0 || true
+adb shell settings put global verifier_verify_adb_installs 0 || true
+adb shell df /data | tail -1 || true
 # محاكاة شاشة جوال قديم: 720×1280 بكثافة 320 (مثل Galaxy J5/J7 وأغلب جوالات 2016-2019)
 if [ -n "$SMALL_SCREEN" ]; then
   set -- $SMALL_SCREEN
@@ -38,7 +42,8 @@ adb shell ls /data/data 2>/dev/null | grep -q com.nadi.gym && left="$left data"
 if [ -n "$left" ]; then echo "LEFTOVERS:$left" | tee emulator-shots/uninstall_check.txt; exit 1; fi
 echo "CLEAN UNINSTALL: no files left" | tee emulator-shots/uninstall_check.txt
 if [ -f integration_test/app_test.dart ]; then
-  flutter drive --driver=test_driver/integration_test.dart --target=integration_test/app_test.dart -d emulator-5554 2>&1 | tee emulator-shots/integration_test.log
+  # حد زمني: إن علق التثبيت أو الجولة يظهر الخطأ خلال دقائق بدل ساعة
+  timeout 35m flutter drive --driver=test_driver/integration_test.dart --target=integration_test/app_test.dart -d emulator-5554 2>&1 | tee emulator-shots/integration_test.log
   status=${PIPESTATUS[0]}
   mv -f screenshots/*.png emulator-shots/ 2>/dev/null || true
   exit $status
