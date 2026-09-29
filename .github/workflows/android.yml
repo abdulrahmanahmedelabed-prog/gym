@@ -1,0 +1,138 @@
+name: Android APK + emulator test + web demo
+
+# مع كل تحديث: اختبارات، بناء APK ونشره كإصدار (رابط تحميل ثابت)،
+# تشغيل التطبيق على محاكي أندرويد حقيقي مع صور للشاشات، ونسخة ويب للتجربة من المتصفح.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: "3.47.5"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+      - name: Unit & widget tests
+        run: flutter test
+      - name: Build APK
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          flutter build apk --release --build-number=${{ github.run_number }}
+          cp build/app/outputs/flutter-apk/app-release.apk nadi-gym.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nadi-gym-apk
+          path: nadi-gym.apk
+      - name: Build web demo
+        run: flutter build web --release --base-href /gym/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: build/web
+
+  emulator:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: nadi-gym-apk
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - run: flutter pub get
+      - name: Run on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash .github/scripts/emulator_test.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: emulator-screenshots
+          path: emulator-shots
+
+  release:
+    needs: [build, emulator]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: nadi-gym-apk
+      - uses: actions/download-artifact@v4
+        with:
+          name: emulator-screenshots
+          path: emulator-shots
+      - name: Zip screenshots
+        run: cd emulator-shots && zip -r ../emulator-screenshots.zip . && cd ..
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: "نادي جيم — نسخة ${{ github.run_number }}"
+          make_latest: true
+          body: |
+            ثبّت التطبيق على جوال أندرويد: حمّل **nadi-gym.apk** وافتحه (اسمح بالتثبيت من مصادر غير معروفة عند السؤال).
+            هذه النسخة مُختبرة آلياً على محاكي أندرويد 14 — صور الشاشات في emulator-screenshots.zip.
+            رابط ثابت لآخر نسخة دائماً: https://github.com/${{ github.repository }}/releases/latest/download/nadi-gym.apk
+          files: |
+            nadi-gym.apk
+            emulator-screenshots.zip
+
+  web:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: web
+          path: web
+      - name: Publish web demo to GitHub Pages (gh-pages branch)
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: web
+          force_orphan: true

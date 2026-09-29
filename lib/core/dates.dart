@@ -5,7 +5,7 @@ DateTime dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
 /// 2026-09-29
 String dayKey(DateTime d) =>
-    '${d.year.toString().padLeft(4, '0')}-${_2(d.month)}-${_2(d.day)}';
+    '${d.year.toString().padLeft(4, '0')}-${_pad2(d.month)}-${_pad2(d.day)}';
 
 DateTime parseDay(String s) {
   final p = s.split('-');
@@ -21,13 +21,13 @@ DateTime? tryParseDay(String? s) {
   }
 }
 
-String _2(int v) => v.toString().padLeft(2, '0');
+String _pad2(int v) => v.toString().padLeft(2, '0');
 
-String hhmm(int minutes) => '${_2(minutes ~/ 60)}:${_2(minutes % 60)}';
+String hhmm(int minutes) => '${_pad2(minutes ~/ 60)}:${_pad2(minutes % 60)}';
 
 int minutesOfDay(DateTime d) => d.hour * 60 + d.minute;
 
-String timeKey(DateTime d) => '${dayKey(d)} ${_2(d.hour)}:${_2(d.minute)}';
+String timeKey(DateTime d) => '${dayKey(d)} ${_pad2(d.hour)}:${_pad2(d.minute)}';
 
 /// عدد الأيام من a إلى b (بالتقويم، بدون أثر التوقيت الصيفي)
 int daysBetween(DateTime a, DateTime b) =>
