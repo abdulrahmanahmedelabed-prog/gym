@@ -283,6 +283,7 @@ class DemoData {
     // زائر يوم واحد + مبيعات المتجر
     for (var k = 0; k < 220; k++) {
       final dd = addDays(today, -rnd.nextInt(180));
+      if (dd == today && now.hour < 18) continue; // لا مبيعات في وقت لم يأتِ بعد
       final m = pick(mems);
       final p = pick(products);
       final qty = p.price < 50 ? 1 + rnd.nextInt(3) : 1;
