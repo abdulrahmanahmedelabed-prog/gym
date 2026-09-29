@@ -133,7 +133,7 @@ class _LicenseScreenState extends State<LicenseScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        ResponsiveGrid(minWidth: 260, children: [
+        ResponsiveGrid(minWidth: 300, minColumns: 1, children: [
           _TierCard(tier: Tier.free, current: active, onBuy: null),
           _TierCard(tier: Tier.plus, current: active, onBuy: () => _requestActivation(Tier.plus)),
           _TierCard(tier: Tier.pro, current: active, onBuy: () => _requestActivation(Tier.pro)),

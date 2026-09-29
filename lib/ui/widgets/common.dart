@@ -366,11 +366,12 @@ class ResponsiveGrid extends StatelessWidget {
   final List<Widget> children;
   final double minWidth;
   final double spacing;
-  const ResponsiveGrid({super.key, required this.children, this.minWidth = 160, this.spacing = 10});
+  final int minColumns;
+  const ResponsiveGrid({super.key, required this.children, this.minWidth = 160, this.spacing = 10, this.minColumns = 2});
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(builder: (c, box) {
-        final cols = (box.maxWidth / minWidth).floor().clamp(2, 6);
+        final cols = (box.maxWidth / minWidth).floor().clamp(minColumns, 6);
         final w = (box.maxWidth - spacing * (cols - 1)) / cols;
         return Wrap(spacing: spacing, runSpacing: spacing, children: [for (final ch in children) SizedBox(width: w, child: ch)]);
       });

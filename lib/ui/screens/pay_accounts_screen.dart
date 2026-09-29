@@ -28,8 +28,7 @@ class PayAccountsScreen extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.all(16),
           child: Text(
-            tr('أضف المحافظ والحسابات التي يحوّل لها الأعضاء. ولكل حساب ضع رمز QR الموحد (iBuraq QR Quick) من تطبيق بنكك أو محفظتك: '
-                'يظهر للعضو عند الدفع ليمسحه من أي تطبيق بنكي أو محفظة، ويُرسل له مع طلبات الدفع والتجديد، ويُطبع على الفاتورة.'),
+            tr('أضف المحافظ والحسابات التي يحوّل لها الأعضاء، ولكل حساب رمز QR الموحد (iBuraq QR Quick) من تطبيق بنكك أو محفظتك: يظهر للعضو ليمسحه من أي تطبيق بنكي أو محفظة، ويُرسل مع طلبات الدفع والتجديد، ويُطبع على الفاتورة.'),
             style: TextStyle(color: context.colors.onSurfaceVariant),
           ),
         ),
