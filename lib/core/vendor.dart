@@ -44,4 +44,10 @@ class Vendor {
 
   /// أيام تجربة كل مزايا Pro مجاناً عند أول تشغيل
   static const trialDays = 30;
+
+  /// خادم المزامنة السحابية (Supabase): أنشئ مشروعاً مجانياً على supabase.com، ونفّذ الملف
+  /// server/supabase_sync.sql في SQL Editor، ثم ضع هنا Project URL و anon public key
+  /// (Settings › API). إن تُركا فارغين يستطيع كل نادٍ إدخال خادمه في شاشة المزامنة.
+  static const syncUrl = '';
+  static const syncKey = '';
 }

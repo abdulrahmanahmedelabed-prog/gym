@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
@@ -16,12 +17,14 @@ import '../../services/data_tools.dart';
 import '../../services/demo_data.dart';
 import '../../services/templates.dart';
 import '../../services/license.dart';
+import '../../services/sync.dart';
 import '../widgets/upgrade.dart';
 import 'license_screen.dart';
 import '../widgets/common.dart';
 import 'messages_screen.dart';
 import 'onboarding_screen.dart';
 import 'pay_accounts_screen.dart';
+import 'sync_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -59,6 +62,14 @@ class SettingsScreen extends StatelessWidget {
         tile(Icons.credit_card, tr('الدفع الإلكتروني'), tr('روابط الدفع، المحافظ، البوابات'), const PaymentSettingsScreen(), enabled: canSet),
         tile(Icons.local_offer_outlined, tr('كوبونات الخصم'), tr('عروض ومواسم وخصومات'), const CouponsScreen(), enabled: g.can(Perm.plans) && g.has(Feature.offers)),
         tile(Icons.lock_outline, tr('الأمان'), tr('الرقم السري للموظفين'), const SecuritySettingsScreen(), enabled: canSet),
+        ListTile(
+          enabled: canSet,
+          leading: const Icon(Icons.cloud_sync_outlined),
+          title: Text(tr('المزامنة السحابية'), style: const TextStyle(fontWeight: FontWeight.w600)),
+          subtitle: Text(context.watch<SyncService>().enabled ? syncPhaseLabel(context.watch<SyncService>()) : tr('عدة أجهزة لنفس النادي، ونسخة على السحابة، مع العمل بدون نت')),
+          trailing: lockFor(context, Feature.cloudSync) ?? const Icon(Icons.chevron_right),
+          onTap: () => context.push(const SyncScreen()),
+        ),
         tile(Icons.storage_outlined, tr('البيانات'), tr('نسخ احتياطي، استرجاع، استيراد من Excel'), const DataSettingsScreen(), enabled: canSet || g.can(Perm.reports)),
         const Divider(),
         ListTile(

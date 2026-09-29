@@ -6,6 +6,7 @@ import '../../core/dates.dart';
 import '../../models/business.dart';
 import '../../models/plan.dart';
 import '../../services/demo_data.dart';
+import 'sync_screen.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
@@ -157,9 +158,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 icon: const Icon(Icons.science_outlined),
                 label: Text(tr('جرّب ببيانات نادٍ تجريبي')),
               ),
+              const SizedBox(height: 4),
+              TextButton.icon(
+                onPressed: _busy ? null : () => context.push(const SyncScreen()),
+                icon: const Icon(Icons.devices_outlined),
+                label: Text(tr('ناديك مسجّل على جهاز آخر؟ اربط هذا الجهاز')),
+              ),
               if (_busy) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
               const SizedBox(height: 16),
-              Text(tr('بياناتك تُحفظ على هذا الجهاز فقط. خذ نسخة احتياطية من الإعدادات بانتظام.'),
+              Text(tr('بياناتك تُحفظ على هذا الجهاز ويعمل التطبيق كاملاً بدون إنترنت. خذ نسخة احتياطية بانتظام، أو فعّل المزامنة السحابية.'),
                   textAlign: TextAlign.center, style: context.text.bodySmall?.copyWith(color: c.onSurfaceVariant)),
             ]),
           ),

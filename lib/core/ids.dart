@@ -15,3 +15,9 @@ String newCardToken() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   return List.generate(8, (_) => chars[_rand.nextInt(chars.length)]).join();
 }
+
+/// رمز عشوائي آمن (للمزامنة: معرّف النادي وكلمة سره)
+String randomCode(int n) {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+  return List.generate(n, (_) => chars[_rand.nextInt(chars.length)]).join();
+}

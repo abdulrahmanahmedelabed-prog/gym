@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 
 import '../data/gym_data.dart';
+import '../services/sync.dart';
 import 'app_services.dart';
 import 'screens/lock_screen.dart';
 import 'screens/onboarding_screen.dart';
@@ -12,14 +13,15 @@ import 'theme.dart';
 class GymApp extends StatefulWidget {
   final GymData gym;
   final bool startBackground;
-  const GymApp({super.key, required this.gym, this.startBackground = true});
+  final SyncService? sync;
+  const GymApp({super.key, required this.gym, this.startBackground = true, this.sync});
 
   @override
   State<GymApp> createState() => _GymAppState();
 }
 
 class _GymAppState extends State<GymApp> with WidgetsBindingObserver {
-  late final AppServices services = AppServices(widget.gym);
+  late final AppServices services = AppServices(widget.gym, sync: widget.sync);
 
   @override
   void initState() {
@@ -46,6 +48,7 @@ class _GymAppState extends State<GymApp> with WidgetsBindingObserver {
       providers: [
         ChangeNotifierProvider<GymData>.value(value: widget.gym),
         Provider<AppServices>.value(value: services),
+        ChangeNotifierProvider<SyncService>.value(value: services.sync),
       ],
       child: Selector<GymData, (String, String)>(
         selector: (_, g) => (g.settings.language, g.settings.themeMode),

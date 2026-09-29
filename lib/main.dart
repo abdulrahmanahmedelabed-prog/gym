@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'data/db_factory.dart';
 import 'data/gym_data.dart';
 import 'services/demo_data.dart';
+import 'services/sync.dart';
 import 'ui/app.dart';
 
 Future<void> main() async {
@@ -14,5 +15,8 @@ Future<void> main() async {
   if (kIsWeb && gym.isEmpty) {
     await DemoData(gym).generate();
   }
-  runApp(GymApp(gym: gym));
+  // المزامنة تُحمَّل قبل أي تعديل حتى لا يفوتها شيء
+  final sync = SyncService(gym);
+  await sync.load();
+  runApp(GymApp(gym: gym, sync: sync));
 }

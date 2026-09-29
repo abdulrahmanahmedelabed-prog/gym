@@ -209,7 +209,7 @@ class _MemberTile extends StatelessWidget {
       title: Row(children: [
         Flexible(child: Text(m.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700))),
         const SizedBox(width: 6),
-        Text('#${m.code}', style: TextStyle(fontSize: 12, color: context.colors.outline)),
+        Flexible(child: Text('#${m.code}', maxLines: 1, overflow: TextOverflow.clip, softWrap: false, style: TextStyle(fontSize: 12, color: context.colors.outline))),
       ]),
       subtitle: Text(line ?? m.phone, maxLines: 1, overflow: TextOverflow.ellipsis),
       trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [

@@ -6,6 +6,7 @@ import 'package:nadi_gym/ui/screens/member_detail_screen.dart';
 import 'package:nadi_gym/ui/screens/members_screen.dart';
 import 'package:nadi_gym/ui/screens/more_screen.dart';
 import 'package:nadi_gym/ui/screens/settings_screen.dart';
+import 'package:nadi_gym/ui/screens/sync_screen.dart';
 
 /// جولة على كل شاشات التطبيق بخطوات يستخدمها المستخدم فعلاً.
 /// تُشغَّل كاختبار عادي (flutter test) وعلى محاكي أندرويد حقيقي (مع صور الشاشات).
@@ -128,6 +129,11 @@ Future<void> tour(WidgetTester t, Snap snap) async {
   await tap(t, more('الإعدادات'));
   await tap(t, find.descendant(of: find.byType(SettingsScreen), matching: find.text('الرسائل والتذكيرات')));
   await snap('18_messaging_settings');
+  await back(t);
+  await tap(t, find.descendant(of: find.byType(SettingsScreen), matching: find.text('المزامنة السحابية')));
+  await waitFor(t, find.byType(SyncScreen));
+  await pumpFor(t, 500);
+  await snap('19_cloud_sync');
   await back(t);
   await back(t);
 }

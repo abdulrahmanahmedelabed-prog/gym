@@ -44,6 +44,7 @@ enum Feature {
   importExport,
   staff,
   zatca,
+  cloudSync,
   // Pro
   autoSend,
   paymentGateways,
@@ -53,6 +54,7 @@ enum Feature {
   kiosk,
   auditLog,
   ownerSummary,
+  multiDevice,
 }
 
 const featureTier = <Feature, Tier>{
@@ -69,6 +71,7 @@ const featureTier = <Feature, Tier>{
   Feature.importExport: Tier.plus,
   Feature.staff: Tier.plus,
   Feature.zatca: Tier.plus,
+  Feature.cloudSync: Tier.plus,
   Feature.autoSend: Tier.pro,
   Feature.paymentGateways: Tier.pro,
   Feature.autoRenew: Tier.pro,
@@ -77,6 +80,7 @@ const featureTier = <Feature, Tier>{
   Feature.kiosk: Tier.pro,
   Feature.auditLog: Tier.pro,
   Feature.ownerSummary: Tier.pro,
+  Feature.multiDevice: Tier.pro,
 };
 
 String featureName(Feature f) => switch (f) {
@@ -101,9 +105,13 @@ String featureName(Feature f) => switch (f) {
       Feature.kiosk => tr('شاشة الدخول الذاتي'),
       Feature.auditLog => tr('سجل العمليات وموظفون بلا حد'),
       Feature.ownerSummary => tr('الملخص اليومي للمالك'),
+      Feature.cloudSync => tr('المزامنة والنسخ السحابي (جهازان)'),
+      Feature.multiDevice => tr('مزامنة حتى {n} أجهزة', {'n': proSyncDevices}),
     };
 
 const proStaffLimit = 1000;
+const plusSyncDevices = 2;
+const proSyncDevices = 10;
 const plusStaffLimit = 5;
 
 class LicenseException implements Exception {
@@ -306,6 +314,9 @@ class LicenseManager {
   bool has(Feature f) => tier.index >= featureTier[f]!.index;
 
   int get staffLimit => switch (tier) { Tier.free => 1, Tier.plus => plusStaffLimit, Tier.pro => proStaffLimit };
+
+  /// عدد الأجهزة المسموح بمزامنتها معاً
+  int get syncDeviceLimit => switch (tier) { Tier.free => 0, Tier.plus => plusSyncDevices, Tier.pro => proSyncDevices };
 
   int get memberLimit => tier == Tier.free ? Vendor.freeMemberLimit : 1 << 30;
 

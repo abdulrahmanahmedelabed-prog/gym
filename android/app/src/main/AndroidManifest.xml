@@ -9,7 +9,12 @@
     <application
         android:label="نادي جيم"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules">
+        <!-- الحذف النظيف: بيانات التطبيق كلها داخل مجلده الخاص (تُحذف مع التطبيق)،
+             ولا تُرفع نسخة منها إلى حساب Google فلا يبقى أثر بعد الحذف. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -43,13 +43,28 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        # ملف لكل نوع معالج بدل ملف واحد ضخم يحوي الثلاثة، مع ضغط الكود (--obfuscate):
+        #  nadi-gym.apk     = 32-بت (armeabi-v7a): الأصغر، ويعمل على كل الجوالات تقريباً ومنها القديمة
+        #  nadi-gym-64.apk  = 64-بت (arm64-v8a): للجوالات الحديثة التي لا تقبل تطبيقات 32-بت
+        #  x86_64 للمحاكي فقط (لا يُنشر)
         run: |
-          flutter build apk --release --build-number=${{ github.run_number }}
-          cp build/app/outputs/flutter-apk/app-release.apk nadi-gym.apk
+          flutter build apk --release --split-per-abi --obfuscate --split-debug-info=build/symbols --build-number=${{ github.run_number }}
+          out=build/app/outputs/flutter-apk
+          mkdir -p apk
+          cp $out/app-armeabi-v7a-release.apk apk/nadi-gym.apk
+          cp $out/app-arm64-v8a-release.apk apk/nadi-gym-64.apk
+          cp $out/app-x86_64-release.apk nadi-gym-x86_64.apk
+          ls -la apk nadi-gym-x86_64.apk
+          echo "### APK sizes" >> $GITHUB_STEP_SUMMARY
+          ls -la apk nadi-gym-x86_64.apk | awk 'NF>5 {printf "- %s: %.1f MB\n", $NF, $5/1048576}' >> $GITHUB_STEP_SUMMARY
       - uses: actions/upload-artifact@v4
         with:
           name: nadi-gym-apk
-          path: nadi-gym.apk
+          path: apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nadi-gym-apk-emulator
+          path: nadi-gym-x86_64.apk
       - name: Build web demo
         run: flutter build web --release --base-href /gym/
       - uses: actions/upload-artifact@v4
@@ -58,10 +73,29 @@ jobs:
           path: build/web
 
   emulator:
-    name: Android 14 emulator test
+    # جوال حديث (أندرويد 14) + جوال قديم ضعيف مثل أغلب جوالات غزة (أندرويد 7، ذاكرة 1.5 جيجا، شاشة 720×1280)
+    name: Android ${{ matrix.name }} emulator test
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: "14"
+            api: 34
+            target: google_apis
+            profile: pixel_6
+            ram: 4096M
+            small: ""
+            shots: emulator-screenshots
+          - name: "7 (old low-RAM phone)"
+            api: 24
+            target: google_apis
+            profile: pixel
+            ram: 1536M
+            small: "720x1280 320"
+            shots: emulator-screenshots-android7
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -75,7 +109,7 @@ jobs:
           cache: true
       - uses: actions/download-artifact@v4
         with:
-          name: nadi-gym-apk
+          name: nadi-gym-apk-emulator
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -85,17 +119,18 @@ jobs:
       - name: Run on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 34
-          target: google_apis
+          api-level: ${{ matrix.api }}
+          target: ${{ matrix.target }}
           arch: x86_64
-          profile: pixel_6
+          profile: ${{ matrix.profile }}
+          ram-size: ${{ matrix.ram }}
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: bash .github/scripts/emulator_test.sh
+          script: SMALL_SCREEN="${{ matrix.small }}" bash .github/scripts/emulator_test.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: emulator-screenshots
+          name: ${{ matrix.shots }}
           path: emulator-shots
 
   windows:
@@ -223,10 +258,10 @@ jobs:
       - name: Collect files
         run: |
           mkdir -p out
-          cp art/nadi-gym-apk/nadi-gym.apk out/
+          cp art/nadi-gym-apk/*.apk out/
           cp art/windows/* out/ 2>/dev/null || true
           cp art/ios/* out/ 2>/dev/null || true
-          for s in emulator-screenshots windows-screenshots ios-screenshots; do
+          for s in emulator-screenshots emulator-screenshots-android7 windows-screenshots ios-screenshots; do
             if [ -d "art/$s" ]; then (cd "art/$s" && zip -qr "../../out/$s.zip" .); fi
           done
           ls -la out
@@ -237,8 +272,10 @@ jobs:
           make_latest: true
           fail_on_unmatched_files: false
           body: |
-            ### 📱 أندرويد
-            حمّل **nadi-gym.apk** على الجوال وافتحه (اسمح بالتثبيت من مصادر غير معروفة). مُختبر على محاكي أندرويد 14.
+            ### 📱 أندرويد (7.0 فما فوق)
+            حمّل **nadi-gym.apk** على الجوال وافتحه (اسمح بالتثبيت من مصادر غير معروفة). يعمل على الجوالات القديمة والحديثة.
+            إن ظهر «لم يتم تثبيت التطبيق» على جوال حديث جداً فحمّل **nadi-gym-64.apk** بدلاً منه.
+            مُختبر على محاكي أندرويد 14 ومحاكي جوال قديم ضعيف (أندرويد 7، ذاكرة 1.5 جيجا).
             رابط ثابت لآخر نسخة: https://github.com/${{ github.repository }}/releases/latest/download/nadi-gym.apk
 
             ### 🖥 ويندوز

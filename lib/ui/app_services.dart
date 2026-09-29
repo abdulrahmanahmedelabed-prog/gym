@@ -22,6 +22,7 @@ import '../services/payments.dart';
 import '../services/pdf_service.dart';
 import '../services/reminders.dart';
 import '../services/reports.dart';
+import '../services/sync.dart';
 
 /// كل الخدمات في مكان واحد + المهام الدورية (التذكيرات، الإرسال الآلي، فحص روابط الدفع، النسخ الاحتياطي).
 class AppServices {
@@ -40,7 +41,13 @@ class AppServices {
   bool _busy = false;
   final status = ValueNotifier<String?>(null);
 
-  AppServices(this.d);
+  /// المزامنة السحابية (اختيارية؛ التطبيق يعمل كاملاً بدونها)
+  final SyncService sync;
+
+  AppServices(this.d, {SyncService? sync}) : sync = sync ?? SyncService(d);
+
+  /// مع تعدد الأجهزة: جهاز واحد فقط (الرئيسي) يجهّز التذكيرات ويرسلها آلياً ويفحص روابط الدفع، حتى لا تتكرر
+  bool get isMainDevice => !sync.enabled || sync.isMain;
 
   PdfFonts? _fonts;
   Future<PdfFonts> fonts() async => _fonts ??= PdfFonts.fromBytes(
@@ -60,17 +67,24 @@ class AppServices {
   void start() {
     Future.delayed(const Duration(seconds: 3), tick);
     _timer = Timer.periodic(const Duration(minutes: 5), (_) => tick());
+    sync.ensureLoaded().then((_) => sync.start());
   }
 
-  void stop() => _timer?.cancel();
+  void stop() {
+    _timer?.cancel();
+    sync.stop();
+  }
 
   Future<void> tick() async {
     if (_busy) return;
     _busy = true;
     try {
-      await reminders.run();
-      await dispatcher.dispatchQueued();
-      if (payLinks.enabled) await payLinks.checkPending();
+      if (isMainDevice) {
+        await reminders.run();
+        await dispatcher.dispatchQueued();
+        if (payLinks.enabled) await payLinks.checkPending();
+        await Maintenance(d).pruneDaily();
+      }
       if (!kIsWeb) await backup.autoDaily();
     } catch (e) {
       debugPrint('tick: $e');
@@ -151,5 +165,8 @@ class AppServices {
     return send(m);
   }
 
-  Future<void> onResume() async => tick();
+  Future<void> onResume() async {
+    if (sync.enabled) await sync.syncNow();
+    await tick();
+  }
 }

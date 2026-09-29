@@ -605,6 +605,7 @@ class MembershipService {
     if (!d.can(Perm.override)) throw GymException(tr('يحتاج صلاحية المدير'));
     final old = s.visitsUsed;
     s.visitsUsed = used < 0 ? 0 : used;
+    s.visitsAdjust = s.visitsUsed - d.countedVisits(s.id);
     await d.putAll([s, d.auditEntry('adjust', '${d.members[s.memberId]?.name}: $old – $used — $reason')]);
   }
 

@@ -46,6 +46,9 @@ class Subscription implements Entity {
   DateTime end; // آخر يوم مسموح (شامل)
   int? visitsTotal;
   int visitsUsed;
+  /// تعديل يدوي على عدد الحصص = المستخدم − عدد مرات الدخول المرتبطة (null = بيانات قديمة).
+  /// يسمح بإعادة حساب المستخدم من سجل الدخول بعد المزامنة بين عدة أجهزة.
+  int? visitsAdjust;
   double price;
   double discount;
   int freezeDaysAllowed;
@@ -71,6 +74,7 @@ class Subscription implements Entity {
     required this.end,
     this.visitsTotal,
     this.visitsUsed = 0,
+    this.visitsAdjust = 0,
     this.price = 0,
     this.discount = 0,
     this.freezeDaysAllowed = 0,
@@ -139,6 +143,7 @@ class Subscription implements Entity {
         'end': dayKey(end),
         'visitsTotal': visitsTotal,
         'visitsUsed': visitsUsed,
+        'visitsAdjust': visitsTotal == null ? null : visitsAdjust,
         'price': price,
         'discount': discount == 0 ? null : discount,
         'freezeDaysAllowed': freezeDaysAllowed,
@@ -165,6 +170,7 @@ class Subscription implements Entity {
         end: parseDay(asStr(m['end'])),
         visitsTotal: asIntOrNull(m['visitsTotal']),
         visitsUsed: asInt(m['visitsUsed']),
+        visitsAdjust: asIntOrNull(m['visitsAdjust']),
         price: asDouble(m['price']),
         discount: asDouble(m['discount']),
         freezeDaysAllowed: asInt(m['freezeDaysAllowed']),

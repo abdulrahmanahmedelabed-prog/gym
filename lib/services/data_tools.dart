@@ -10,6 +10,7 @@ import '../core/money.dart';
 import '../core/phone.dart';
 import '../data/db_factory.dart' as files;
 import '../data/gym_data.dart';
+import '../models/activity.dart';
 import '../models/base.dart';
 import '../models/billing.dart';
 import '../models/business.dart';
@@ -25,6 +26,63 @@ import 'membership.dart';
 String hashPin(String pin, String staffId) => sha256.convert(utf8.encode('nadi|$staffId|$pin')).toString();
 
 bool checkPin(Staff s, String pin) => s.pinHash != null && s.pinHash == hashPin(pin, s.id);
+
+// -----------------------------------------------------------------------------
+// صيانة: إبقاء البيانات خفيفة على الجوالات القديمة
+// -----------------------------------------------------------------------------
+
+/// يحذف السجلات القديمة التي لا يحتاجها العمل اليومي، فيبقى فتح التطبيق سريعاً والذاكرة قليلة
+/// حتى بعد سنوات. لا يمس الأعضاء والاشتراكات والفواتير والدفعات وسجل العمليات أبداً.
+/// النسخ الاحتياطية اليومية تحفظ كل شيء قبل الحذف.
+class Maintenance {
+  final GymData d;
+  Maintenance(this.d);
+
+  /// سجل الدخول: يُحتفظ به سنتين (وأكثر إن كان اشتراكه ما زال قريباً)
+  static const checkinDays = 730;
+
+  /// الرسائل المرسلة أو الملغاة: 6 أشهر
+  static const messageDays = 180;
+
+  Future<int> prune() async {
+    final today = d.today;
+    final chkCut = addDays(today, -checkinDays);
+    final subCut = addDays(today, -60);
+    final msgCut = addDays(today, -messageDays);
+    var n = 0;
+    final oldChk = d.checkins.all.where((c) {
+      if (!c.time.isBefore(chkCut)) return false;
+      final s = d.subs[c.subscriptionId];
+      return s == null || s.end.isBefore(subCut);
+    }).length;
+    if (oldChk > 0) {
+      await d.removeWhere<Checkin>((c) {
+        if (!c.time.isBefore(chkCut)) return false;
+        final s = d.subs[c.subscriptionId];
+        return s == null || s.end.isBefore(subCut);
+      });
+      n += oldChk;
+    }
+    bool oldMsg(Message m) =>
+        m.createdAt.isBefore(msgCut) && (m.status == MsgStatus.sent || m.status == MsgStatus.cancelled || m.status == MsgStatus.failed);
+    final msgs = d.messages.all.where(oldMsg).length;
+    if (msgs > 0) {
+      await d.removeWhere<Message>(oldMsg);
+      n += msgs;
+    }
+    return n;
+  }
+
+  /// مرة في اليوم على الأكثر
+  Future<int> pruneDaily() async {
+    final key = dayKey(d.today);
+    if (d.settings.str('lastPrune') == key) return 0;
+    final n = await prune();
+    d.settings.setStr('lastPrune', key);
+    await d.saveSettings();
+    return n;
+  }
+}
 
 // -----------------------------------------------------------------------------
 // النسخ الاحتياطي

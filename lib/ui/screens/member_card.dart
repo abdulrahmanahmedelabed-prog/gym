@@ -51,7 +51,7 @@ class _MemberCardDialogState extends State<_MemberCardDialog> {
     final sub = context.services.members.currentSub(m.id);
     return Dialog(
       insetPadding: const EdgeInsets.all(20),
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           RepaintBoundary(

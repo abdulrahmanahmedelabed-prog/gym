@@ -136,12 +136,15 @@ class _ShopScreenState extends State<ShopScreen> {
                   title: tr('لا توجد منتجات'),
                   action: FilledButton.icon(onPressed: () => context.push(const ProductsScreen()), icon: const Icon(Icons.add), label: Text(tr('إضافة منتجات'))),
                 )
-              : GridView.extent(
-                  maxCrossAxisExtent: 180,
+              : GridView(
+                  // الارتفاع يتبع حجم الخط (الجوالات القديمة غالباً بخط مكبّر)
+                  gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 180,
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
+                    mainAxisExtent: 32 + MediaQuery.textScalerOf(context).scale(118),
+                  ),
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                  mainAxisSpacing: 10,
-                  crossAxisSpacing: 10,
-                  childAspectRatio: 1.25,
                   children: [
                     for (final p in products)
                       Card(
@@ -151,7 +154,7 @@ class _ShopScreenState extends State<ShopScreen> {
                           child: Padding(
                             padding: const EdgeInsets.all(12),
                             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Text(p.name, style: const TextStyle(fontWeight: FontWeight.w700), maxLines: 2),
+                              Text(p.name, style: const TextStyle(fontWeight: FontWeight.w700), maxLines: 2, overflow: TextOverflow.ellipsis),
                               const Spacer(),
                               Text(fmtMoney(p.price), style: context.text.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
                               if (p.trackStock)

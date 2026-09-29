@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:sembast/sembast.dart';
 
@@ -27,6 +30,20 @@ class Coll<T extends Entity> {
   Iterable<T> get all => items.values;
   T? operator [](String? id) => id == null ? null : items[id];
 }
+
+/// سجل قادم من السحابة: data = null يعني أنه حُذف
+class RemoteRecord {
+  final String coll;
+  final String id;
+  final Map<String, Object?>? data;
+  final int ts;
+  final String dev;
+  const RemoteRecord(this.coll, this.id, this.data, this.ts, this.dev);
+  String get key => '$coll/$id';
+}
+
+/// إعدادات خاصة بكل جهاز ولا تُزامن (المظهر، الإرسال من شريحة هذا الجوال، مواعيد المهام المحلية)
+const localSettingKeys = {'themeMode', 'smsMode', 'lastReminderRun', 'lastPrune'};
 
 /// كل بيانات النادي. أي تعديل يمر من هنا: يُحدّث الذاكرة ثم يحفظ في قاعدة البيانات ثم يُبلغ الشاشات.
 class GymData extends ChangeNotifier {
@@ -61,6 +78,221 @@ class GymData extends ChangeNotifier {
   List<Coll> get tables => _tables.values.toList();
 
   static final _meta = StoreRef<String, Object?>('meta');
+
+  // ---------------------------------------------------------------------------
+  // المزامنة: كل تعديل محلي يُسجَّل في «صندوق الإرسال» ضمن نفس المعاملة،
+  // فلا يضيع تعديل حتى لو انقطع النت أو أُغلق التطبيق. التطبيق يعمل كاملاً بدون نت.
+  // ---------------------------------------------------------------------------
+
+  static final outbox = StoreRef<String, Map<String, Object?>>('sync_outbox');
+
+  /// معرّف هذا الجهاز عند تفعيل المزامنة (null = المزامنة غير مفعلة، لا يُسجَّل شيء)
+  String? syncDevice;
+
+  /// عند تعدد الأجهزة: كل جهاز يأخذ أرقاماً تنتهي برقمه (1..9، 0) فلا تتكرر أرقام الفواتير والعضوية
+  int syncSlot = 1;
+  bool syncSlotted = false;
+
+  /// ساعة منطقية: أكبر من كل ما رآه الجهاز، فتعديلك بعد رؤية تعديل غيرك يغلبه حتى لو كانت ساعة جوالك متأخرة
+  int _hlc = 0;
+  int get hlc => _hlc;
+
+  void observeStamp(int ts) {
+    if (ts > _hlc) _hlc = ts;
+  }
+
+  int nextStamp() {
+    _hlc = math.max(clock().millisecondsSinceEpoch, _hlc + 1);
+    return _hlc;
+  }
+
+  /// يُستدعى بعد كل تعديل محلي (لبدء مزامنة قريبة)
+  VoidCallback? onLocalChange;
+
+  final Set<String> _dirtyCounters = {};
+  Map<String, String> _settingsSnap = {};
+
+  Map<String, String> _snapSettings() => {for (final e in settings.data.entries) e.key: jsonEncode(e.value)};
+
+  Map<String, Coll> get _byName => {for (final t in _tables.values) t.name: t};
+
+  Future<void> _enqueue(DatabaseClient txn, Iterable<String> keys) async {
+    for (final k in keys) {
+      await outbox.record(k).put(txn, {'ts': nextStamp()});
+    }
+  }
+
+  List<String> _settingsChangedKeys() {
+    final now = _snapSettings();
+    final keys = <String>[
+      for (final k in {...now.keys, ..._settingsSnap.keys})
+        if (!localSettingKeys.contains(k) && now[k] != _settingsSnap[k]) 'settings/$k',
+    ];
+    _settingsSnap = now;
+    return keys;
+  }
+
+  List<String> _counterKeys() => [for (final n in _dirtyCounters) 'counters/$n@$syncDevice'];
+
+  /// عدد التعديلات التي لم تُرفع بعد
+  Future<int> pendingCount() => outbox.count(db);
+
+  /// نسخة السجل الحالية للرفع (null = محذوف)
+  Map<String, Object?>? snapshotOf(String coll, String id) {
+    if (coll == 'settings') {
+      return settings.data.containsKey(id) && settings.data[id] != null ? {'v': settings.data[id]} : null;
+    }
+    if (coll == 'counters') {
+      final name = id.split('@').first;
+      final v = _counters[name];
+      return v == null ? null : {'v': v};
+    }
+    return _byName[coll]?.items[id]?.toMap();
+  }
+
+  /// تسجيل كل البيانات للرفع (أول تفعيل للسحابة، أو بعد استعادة نسخة احتياطية)
+  Future<void> enqueueAll() async {
+    if (syncDevice == null) return;
+    await db.transaction((txn) async {
+      for (final t in _tables.values) {
+        await _enqueue(txn, t.items.keys.map((id) => '${t.name}/$id'));
+      }
+      await _enqueue(txn, [
+        for (final k in settings.data.keys)
+          if (!localSettingKeys.contains(k)) 'settings/$k'
+      ]);
+      await _enqueue(txn, [
+        for (final k in _counters.keys)
+          if (!k.contains('@')) 'counters/$k@$syncDevice'
+      ]);
+    });
+    _settingsSnap = _snapSettings();
+    onLocalChange?.call();
+  }
+
+  /// تطبيق ما وصل من السحابة. التعديل الأحدث يفوز (لكل سجل)، والتعديل المحلي الذي لم يُرفع
+  /// ويكون أحدث لا يُستبدل. ثم تُعاد الحسابات المشتقة (المدفوع في الفاتورة، الحصص المستخدمة).
+  Future<int> applyRemote(List<RemoteRecord> recs) async {
+    if (recs.isEmpty) return 0;
+    final byName = _byName;
+    final pending = await outbox.records(recs.map((r) => r.key)).get(db);
+    final touchedInv = <String>{};
+    final touchedSubs = <String>{};
+    var applied = 0;
+    var settingsChanged = false;
+    var countersChanged = false;
+    await db.transaction((txn) async {
+      for (var i = 0; i < recs.length; i++) {
+        final r = recs[i];
+        observeStamp(r.ts);
+        final p = pending[i];
+        if (p != null) {
+          if (asInt(p['ts']) >= r.ts) continue; // تعديلنا أحدث وسيُرفع
+          await outbox.record(r.key).delete(txn);
+        }
+        final data = r.data;
+        if (r.coll == 'settings') {
+          if (localSettingKeys.contains(r.id)) continue;
+          if (data == null || data['v'] == null) {
+            settings.data.remove(r.id);
+          } else {
+            settings.data[r.id] = data['v'];
+          }
+          settingsChanged = true;
+        } else if (r.coll == 'counters') {
+          if (!r.id.contains('@') || r.id.endsWith('@$syncDevice')) continue;
+          _counters[r.id] = asInt(data?['v']);
+          countersChanged = true;
+        } else {
+          final t = byName[r.coll];
+          if (t == null) continue;
+          final old = t.items[r.id];
+          if (data == null) {
+            await t.store.record(r.id).delete(txn);
+            t.items.remove(r.id);
+          } else {
+            final e = t.fromMap(data);
+            await t.store.record(e.id).put(txn, e.toMap());
+            t.items[e.id] = e;
+          }
+          for (final e in [old, t.items[r.id]]) {
+            switch (e) {
+              case Payment pay:
+                touchedInv.add(pay.invoiceId);
+              case Invoice inv:
+                touchedInv.add(inv.id);
+              case Checkin c when c.subscriptionId != null:
+                touchedSubs.add(c.subscriptionId!);
+              case Subscription s:
+                touchedSubs.add(s.id);
+            }
+          }
+        }
+        applied++;
+      }
+      if (settingsChanged) {
+        await _meta.record('settings').put(txn, settings.toMap());
+        _settingsSnap = _snapSettings();
+      }
+      if (countersChanged) await _meta.record('counters').put(txn, _counters);
+    });
+    _idx.clear();
+    await _recomputeDerived(touchedInv, touchedSubs);
+    if (settingsChanged) applySettings();
+    _changed();
+    return applied;
+  }
+
+  /// عدد مرات الدخول المسموحة المرتبطة باشتراك
+  int countedVisits(String subId) =>
+      (_group<Checkin>('chkBySub', checkins.all, (c) => c.subscriptionId)[subId] ?? const <Checkin>[])
+          .where((c) => c.allowed)
+          .length;
+
+  /// الحقول المحسوبة تُعاد من أصلها بعد دمج بيانات عدة أجهزة (بدون رفع: كل جهاز يحسبها بنفسه)
+  Future<void> _recomputeDerived(Set<String> invIds, Set<String> subIds) async {
+    final fixes = <Entity>[];
+    for (final id in invIds) {
+      final inv = invoices[id];
+      if (inv == null) continue;
+      final sum = roundMoney(paymentsOf(id).fold(0.0, (s, p) => s + p.amount));
+      if ((sum - inv.paid).abs() > 0.001) {
+        inv.paid = sum;
+        fixes.add(inv);
+      }
+    }
+    for (final id in subIds) {
+      final s = subs[id];
+      final total = s?.visitsTotal;
+      if (s == null || total == null) continue;
+      // اشتراك انتهى منذ مدة: قد تكون سجلات دخوله القديمة حُذفت للتخفيف، فلا يُعاد حسابه
+      if (s.end.isBefore(addDays(today, -60))) continue;
+      final n = countedVisits(id);
+      final used = s.visitsAdjust == null ? math.max(s.visitsUsed, math.min(n, total)) : (n + s.visitsAdjust!).clamp(0, total);
+      if (used != s.visitsUsed) {
+        s.visitsUsed = used;
+        fixes.add(s);
+      }
+    }
+    if (fixes.isEmpty) return;
+    await db.transaction((txn) async {
+      for (final e in fixes) {
+        await _tables[e.runtimeType]!.store.record(e.id).put(txn, e.toMap());
+      }
+    });
+  }
+
+  /// مسح البيانات المحلية قبل الانضمام لنادٍ على السحابة (بدون تسجيل حذف للرفع)
+  Future<void> clearForJoin() async {
+    await db.transaction((txn) async {
+      for (final t in _tables.values) {
+        await t.store.delete(txn);
+      }
+      await _meta.delete(txn);
+      await outbox.delete(txn);
+    });
+    await reload();
+  }
 
   GymSettings settings = GymSettings();
   Map<String, int> _counters = {};
@@ -102,8 +334,23 @@ class GymData extends ChangeNotifier {
     settings = GymSettings(s is Map ? Map<String, Object?>.from(s) : {});
     final c = await _meta.record('counters').get(db);
     _counters = c is Map ? c.map((k, v) => MapEntry(k.toString(), asInt(v))) : {};
+    _settingsSnap = _snapSettings();
+    await _migrateVisits();
     applySettings();
     _changed();
+  }
+
+  /// بيانات من نسخة سابقة: حساب تعديل الحصص مرة واحدة ليصبح المستخدم قابلاً لإعادة الحساب
+  Future<void> _migrateVisits() async {
+    final old = subs.all.where((s) => s.visitsTotal != null && s.visitsAdjust == null).toList();
+    if (old.isEmpty) return;
+    _idx.clear();
+    await db.transaction((txn) async {
+      for (final s in old) {
+        s.visitsAdjust = s.visitsUsed - countedVisits(s.id);
+        await subs.store.record(s.id).put(txn, s.toMap());
+      }
+    });
   }
 
   /// ضبط اللغة والعملة من الإعدادات
@@ -133,6 +380,7 @@ class GymData extends ChangeNotifier {
   /// حفظ عدة سجلات معاً في معاملة واحدة: تنجح كلها أو لا يُحفظ شيء
   Future<void> putAll(Iterable<Entity> list, {bool withSettings = false}) async {
     final items = list.toList();
+    final sync = syncDevice != null;
     await db.transaction((txn) async {
       for (final e in items) {
         final t = _tables[e.runtimeType]!;
@@ -140,49 +388,83 @@ class GymData extends ChangeNotifier {
       }
       if (_countersDirty) await _meta.record('counters').put(txn, _counters);
       if (withSettings) await _meta.record('settings').put(txn, settings.toMap());
+      if (sync) {
+        await _enqueue(txn, items.map((e) => '${_tables[e.runtimeType]!.name}/${e.id}'));
+        await _enqueue(txn, _counterKeys());
+        if (withSettings) await _enqueue(txn, _settingsChangedKeys());
+      }
     });
     _countersDirty = false;
+    _dirtyCounters.clear();
     for (final e in items) {
       _tables[e.runtimeType]!.items[e.id] = e;
     }
     _changed();
+    if (sync) onLocalChange?.call();
   }
 
   Future<void> remove(Entity e) async {
     final t = _tables[e.runtimeType]!;
-    await t.store.record(e.id).delete(db);
-    t.items.remove(e.id);
-    _changed();
+    await _deleteIds(t, [e.id]);
   }
 
   Future<void> removeWhere<T extends Entity>(bool Function(T) test) async {
     final t = table<T>();
     final ids = t.items.values.where(test).map((e) => e.id).toList();
     if (ids.isEmpty) return;
-    await t.store.records(ids).delete(db);
+    await _deleteIds(t, ids);
+  }
+
+  Future<void> _deleteIds(Coll t, List<String> ids) async {
+    final sync = syncDevice != null;
+    await db.transaction((txn) async {
+      await t.store.records(ids).delete(txn);
+      if (sync) await _enqueue(txn, ids.map((id) => '${t.name}/$id'));
+    });
     for (final id in ids) {
       t.items.remove(id);
     }
     _changed();
+    if (sync) onLocalChange?.call();
   }
 
   Future<void> saveSettings() async {
-    await _meta.record('settings').put(db, settings.toMap());
+    final sync = syncDevice != null;
+    await db.transaction((txn) async {
+      await _meta.record('settings').put(txn, settings.toMap());
+      if (sync) await _enqueue(txn, _settingsChangedKeys());
+    });
+    if (!sync) _settingsSnap = _snapSettings();
     applySettings();
     _changed();
+    if (sync) onLocalChange?.call();
   }
 
   /// ترقيم تسلسلي لا يتكرر (الفواتير، الإيصالات، أرقام العضوية). يُحفظ مع أول putAll بعده.
   int nextCounter(String name, {int start = 1}) {
-    final v = (_counters[name] ?? (start - 1)) + 1;
+    var base = _counters[name] ?? (start - 1);
+    // أعلى رقم استخدمه أي جهاز آخر في النادي
+    for (final e in _counters.entries) {
+      if (e.key.startsWith('$name@') && e.value > base) base = e.value;
+    }
+    var v = base + 1;
+    if (syncSlotted) {
+      while (v % 10 != syncSlot % 10) {
+        v++;
+      }
+    }
     _counters[name] = v;
     _countersDirty = true;
+    _dirtyCounters.add(name);
     return v;
   }
 
   String nextNumber(String name, String prefix) => '$prefix-${nextCounter(name).toString().padLeft(6, '0')}';
 
   int peekCounter(String name) => _counters[name] ?? 0;
+
+  /// عدادات هذا الجهاز فقط (بدون نسخ الأجهزة الأخرى)
+  Map<String, int> get localCounters => {for (final e in _counters.entries) if (!e.key.contains('@')) e.key: e.value};
 
   // ---------------------------------------------------------------------------
   // الصلاحيات وسجل العمليات
@@ -336,17 +618,25 @@ class GymData extends ChangeNotifier {
       }
       await _meta.record('settings').put(txn, Map<String, Object?>.from(data['settings'] as Map? ?? {}));
       await _meta.record('counters').put(txn, Map<String, Object?>.from(data['counters'] as Map? ?? {}));
+      await outbox.delete(txn);
     });
     await reload();
+    // مع المزامنة: النسخة المستعادة تُرفع لتصبح هي الأحدث على كل الأجهزة
+    await enqueueAll();
   }
 
-  /// مسح كل البيانات (بعد تأكيد المالك)
+  /// يُستدعى قبل مسح كل البيانات (لإيقاف المزامنة على هذا الجهاز فلا يُمسح النادي من السحابة)
+  Future<void> Function()? beforeWipe;
+
+  /// مسح كل البيانات (بعد تأكيد المالك). لا يمس بيانات النادي على السحابة.
   Future<void> wipe() async {
+    await beforeWipe?.call();
     await db.transaction((txn) async {
       for (final t in _tables.values) {
         await t.store.delete(txn);
       }
       await _meta.delete(txn);
+      await outbox.delete(txn);
     });
     await reload();
   }

@@ -21,6 +21,7 @@ import 'messages_screen.dart';
 import 'reports_screen.dart';
 import 'shell.dart';
 import 'shop_screen.dart';
+import 'sync_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -62,6 +63,7 @@ class DashboardScreen extends StatelessWidget {
         ]),
         toolbarHeight: 64,
         actions: [
+          const SyncStatusButton(),
           IconButton(
             tooltip: tr('الرسائل'),
             onPressed: () => context.push(const MessagesScreen()),
