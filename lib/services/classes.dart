@@ -7,6 +7,7 @@ import '../models/base.dart';
 import '../models/business.dart';
 import '../models/member.dart';
 import '../models/subscription.dart';
+import 'license.dart';
 import 'membership.dart';
 
 /// موعد فعلي لحصة في يوم محدد
@@ -48,6 +49,7 @@ class ClassService {
 
   /// حجز: إن امتلأت الحصة يدخل قائمة الانتظار
   Future<Booking> book(ClassSession s, Member m) async {
+    d.require(Feature.classes);
     if (s.start.isBefore(d.now().subtract(const Duration(minutes: 15)))) throw GymException(tr('الحصة بدأت أو انتهت'));
     if (s.cls.gender != null && m.gender != null && s.cls.gender != m.gender) {
       throw GymException(tr('الحصة غير مخصصة لهذا العضو'));

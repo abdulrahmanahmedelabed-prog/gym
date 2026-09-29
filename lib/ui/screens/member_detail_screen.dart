@@ -13,6 +13,8 @@ import '../../models/plan.dart';
 import '../../models/subscription.dart';
 import '../../services/membership.dart';
 import '../theme.dart';
+import '../../services/license.dart';
+import '../widgets/upgrade.dart';
 import '../widgets/common.dart';
 import '../widgets/dialogs.dart';
 import 'dashboard_screen.dart';
@@ -210,7 +212,7 @@ class MemberDetailScreen extends StatelessWidget {
       case 'invoice':
         await _manualInvoice(context, m);
       case 'measure':
-        await showMeasurementDialog(context, m);
+        if (await ensureFeature(context, Feature.measurements) && context.mounted) await showMeasurementDialog(context, m);
       case 'archive':
         m.archived = !m.archived;
         await g.put(m);
@@ -533,6 +535,14 @@ class _MeasurementsTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final g = context.gymWatch;
     final list = g.measurementsOf(m.id);
+    if (!g.has(Feature.measurements)) {
+      return EmptyState(
+        icon: Icons.lock_outline,
+        title: featureName(Feature.measurements),
+        message: tr('متاحة في نسخة {t}', {'t': tierName(featureTier[Feature.measurements]!)}),
+        action: FilledButton(onPressed: () => showUpgradeDialog(context, feature: Feature.measurements), child: Text(tr('عرض الباقات'))),
+      );
+    }
     if (list.isEmpty) {
       return EmptyState(
         icon: Icons.monitor_weight_outlined,

@@ -15,6 +15,7 @@ import '../models/billing.dart';
 import '../models/business.dart';
 import '../models/member.dart';
 import '../models/plan.dart';
+import 'license.dart';
 import 'membership.dart';
 
 // -----------------------------------------------------------------------------
@@ -174,6 +175,7 @@ class MemberImporter {
   }
 
   Future<ImportResult> importCsv(String text) async {
+    d.require(Feature.importExport);
     final rows = parseCsv(text);
     final res = ImportResult();
     if (rows.length < 2) {

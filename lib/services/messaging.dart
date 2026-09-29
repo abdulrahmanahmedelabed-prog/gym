@@ -10,6 +10,7 @@ import '../data/gym_data.dart';
 import '../models/activity.dart';
 import '../models/member.dart';
 import '../models/settings.dart';
+import 'license.dart';
 
 class SendException implements Exception {
   final String message;
@@ -250,6 +251,7 @@ class Dispatcher {
   GymSettings get s => d.settings;
 
   Sender? senderFor(Channel ch) {
+    if (!d.has(Feature.autoSend)) return null; // الإرسال الآلي في Pro؛ غيرها بلمسة من الجوال
     final mode = ch == Channel.whatsapp ? s.waMode : s.smsMode;
     final p = ch == Channel.whatsapp ? 'wa' : 'sms';
     switch (mode) {

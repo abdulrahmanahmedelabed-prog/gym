@@ -15,6 +15,9 @@ import '../../models/settings.dart';
 import '../../services/data_tools.dart';
 import '../../services/demo_data.dart';
 import '../../services/templates.dart';
+import '../../services/license.dart';
+import '../widgets/upgrade.dart';
+import 'license_screen.dart';
 import '../widgets/common.dart';
 import 'messages_screen.dart';
 import 'onboarding_screen.dart';
@@ -37,6 +40,17 @@ class SettingsScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: Text(tr('الإعدادات'))),
       body: ListView(children: [
+        Card(
+          margin: const EdgeInsets.all(12),
+          color: tierColor(g.license.tier).withValues(alpha: 0.08),
+          child: ListTile(
+            leading: Icon(Icons.workspace_premium, color: tierColor(g.license.tier)),
+            title: Text(tr('الترخيص والباقات'), style: const TextStyle(fontWeight: FontWeight.w700)),
+            subtitle: Text(g.license.status().label),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push(const LicenseScreen()),
+          ),
+        ),
         tile(Icons.storefront, tr('النادي'), tr('الاسم، الشعار، العملة، اللغة، المظهر'), const GeneralSettingsScreen(), enabled: canSet),
         tile(Icons.receipt_long, tr('الفواتير والضريبة'), tr('ضريبة القيمة المضافة، رمز QR، نص الفاتورة'), const InvoiceSettingsScreen(), enabled: canSet),
         tile(Icons.door_front_door_outlined, tr('قواعد الدخول'), tr('ساعات السيدات، فترة السماح، الديون'), const AccessSettingsScreen(), enabled: canSet),
@@ -226,10 +240,13 @@ class _InvoiceSettingsScreenState extends State<InvoiceSettingsScreen> with _Aut
           SwitchListTile(title: Text(tr('الأسعار شاملة الضريبة')), value: s.taxInclusive, onChanged: (v) => setState(() => s.taxInclusive = v)),
           _Field(tr('الرقم الضريبي'), s.taxNumber, (v) => s.taxNumber = v, ltr: true),
           SwitchListTile(
-            title: Text(tr('رمز QR للفاتورة الضريبية (السعودية)')),
+            title: Row(children: [Flexible(child: Text(tr('رمز QR للفاتورة الضريبية (السعودية)'))), const SizedBox(width: 6), ?lockFor(context, Feature.zatca)]),
             subtitle: Text(tr('صيغة هيئة الزكاة والضريبة للفواتير المبسطة')),
             value: s.zatcaQr,
-            onChanged: (v) => setState(() => s.zatcaQr = v),
+            onChanged: (v) async {
+              if (v && !await ensureFeature(context, Feature.zatca)) return;
+              setState(() => s.zatcaQr = v);
+            },
           ),
         ],
         _Head(tr('شكل الفاتورة')),
@@ -448,7 +465,15 @@ class _MessagingSettingsScreenState extends State<MessagingSettingsScreen> with 
         RadioGroup<String>(
           groupValue: s.waMode,
           onChanged: (v) => setState(() => s.waMode = v!),
-          child: Column(children: [for (final m in waModes) RadioListTile<String>(value: m, title: Text(_modeName(m, true)))]),
+          child: Column(children: [
+            for (final m in waModes)
+              RadioListTile<String>(
+                value: m,
+                enabled: m == 'phone' || g.has(Feature.autoSend),
+                title: Text(_modeName(m, true)),
+                secondary: m == 'phone' ? null : lockFor(context, Feature.autoSend),
+              ),
+          ]),
         ),
         if (s.waMode == 'phone')
           _Note(tr('مجاني وبدون أي اشتراك: التطبيق يجهّز الرسالة ويفتح واتساب على رقم العضو، وأنت تضغط إرسال. مع «إرسال الكل» تُرسل عشرات التذكيرات في دقائق.')),
@@ -473,7 +498,13 @@ class _MessagingSettingsScreenState extends State<MessagingSettingsScreen> with 
           onChanged: (v) => setState(() => s.smsMode = v!),
           child: Column(children: [
             for (final m in smsModes)
-              if (m != 'sim' || (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)) RadioListTile<String>(value: m, title: Text(_modeName(m, false))),
+              if (m != 'sim' || (!kIsWeb && defaultTargetPlatform == TargetPlatform.android))
+                RadioListTile<String>(
+                  value: m,
+                  enabled: m == 'phone' || g.has(Feature.autoSend),
+                  title: Text(_modeName(m, false)),
+                  secondary: m == 'phone' ? null : lockFor(context, Feature.autoSend),
+                ),
           ]),
         ),
         if (s.smsMode == 'sim')
@@ -620,7 +651,15 @@ class _PaymentSettingsScreenState extends State<PaymentSettingsScreen> with _Aut
         RadioGroup<String>(
           groupValue: s.payProvider,
           onChanged: (v) => setState(() => s.payProvider = v!),
-          child: Column(children: [for (final p in payProviders) RadioListTile<String>(value: p, title: Text(_name(p)))]),
+          child: Column(children: [
+            for (final p in payProviders)
+              RadioListTile<String>(
+                value: p,
+                enabled: p == 'none' || context.gym.has(p == 'link' ? Feature.walletQr : Feature.paymentGateways),
+                title: Text(_name(p)),
+                secondary: p == 'none' ? null : lockFor(context, p == 'link' ? Feature.walletQr : Feature.paymentGateways),
+              ),
+          ]),
         ),
         if (['stripe', 'moyasar', 'tap'].contains(s.payProvider)) ...[
           _Field(tr('المفتاح السري (Secret key)'), s.paySecretKey, (v) => s.paySecretKey = v.trim(), ltr: true, obscure: true),
@@ -706,7 +745,9 @@ class DataSettingsScreen extends StatelessWidget {
             title: Text(tr('استيراد الأعضاء من Excel (CSV)')),
             subtitle: Text(tr('احفظ الجدول من Excel بصيغة CSV. الأعمدة: الاسم، الجوال، الجنس، الباقة، تاريخ الانتهاء، الرصيد')),
             isThreeLine: true,
+            trailing: lockFor(context, Feature.importExport),
             onTap: () async {
+              if (!await ensureFeature(context, Feature.importExport)) return;
               final f = await FilePicker.pickFile(type: FileType.custom, allowedExtensions: ['csv', 'txt']);
               if (f == null || !context.mounted) return;
               final res = await runAction(context, () async => MemberImporter(g).importCsv(utf8.decode(await f.readAsBytes(), allowMalformed: true)));
@@ -731,7 +772,9 @@ class DataSettingsScreen extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.table_view_outlined),
             title: Text(tr('تصدير الأعضاء (CSV)')),
+            trailing: lockFor(context, Feature.importExport),
             onTap: () => runAction(context, () async {
+              g.require(Feature.importExport);
               final ms = sv.members;
               final rows = <List<Object?>>[
                 [tr('رقم العضوية'), tr('الاسم'), tr('الجوال'), tr('الجنس'), tr('الباقة'), tr('البداية'), tr('الانتهاء'), tr('الرصيد')],

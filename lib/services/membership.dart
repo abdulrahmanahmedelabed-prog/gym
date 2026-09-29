@@ -9,6 +9,7 @@ import '../models/business.dart';
 import '../models/member.dart';
 import '../models/plan.dart';
 import '../models/subscription.dart';
+import 'license.dart';
 
 /// حالة العضو كما تظهر في القوائم
 enum MemberState { active, expiring, frozen, pending, expired, none }
@@ -220,6 +221,27 @@ class MembershipService {
 
   bool isNewMember(String memberId) => d.subsOf(memberId).isEmpty;
 
+  int activeMemberCount([DateTime? day]) {
+    var n = 0;
+    for (final m in d.members.all) {
+      if (m.archived) continue;
+      final st = stateOf(m.id, day);
+      if (st != MemberState.none && st != MemberState.expired) n++;
+    }
+    return n;
+  }
+
+  /// النسخة المجانية: حد أقصى للأعضاء الفعّالين (تجديد عضو فعّال مسموح دائماً)
+  void _checkMemberLimit(String memberId) {
+    final limit = d.license.memberLimit;
+    if (limit >= 1 << 30) return;
+    final st = stateOf(memberId);
+    if (st != MemberState.none && st != MemberState.expired) return;
+    if (activeMemberCount() >= limit) {
+      throw LicenseException(tr('النسخة المجانية تتسع لـ {n} عضواً فعّالاً. رقِّ إلى Plus لأعضاء بلا حد', {'n': limit}));
+    }
+  }
+
   Coupon? findCoupon(String code) {
     final c = code.trim().toUpperCase();
     for (final x in d.coupons.all) {
@@ -283,6 +305,10 @@ class MembershipService {
     if (plan.gender != null && member.gender != null && plan.gender != member.gender) {
       throw GymException(tr('هذه الباقة مخصصة لـ {g} فقط', {'g': plan.gender == Gender.male ? tr('الرجال') : tr('السيدات')}));
     }
+    if (plan.kind == PlanKind.pt) d.require(Feature.personalTraining);
+    if (r.installments.isNotEmpty) d.require(Feature.installments);
+    if (r.couponCode != null && r.couponCode!.trim().isNotEmpty) d.require(Feature.offers);
+    _checkMemberLimit(member.id);
     if (plan.kind == PlanKind.pt && r.trainerId == null) throw GymException(tr('اختر المدرب للتدريب الشخصي'));
     final q = quote(r);
     final totalDiscount = r.discount + q.couponDiscount;

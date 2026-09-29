@@ -9,6 +9,8 @@ import '../../models/settings.dart';
 import '../../services/membership.dart';
 import '../../services/templates.dart';
 import '../theme.dart';
+import '../../services/license.dart';
+import '../widgets/upgrade.dart';
 import '../widgets/common.dart';
 import 'member_detail_screen.dart';
 import 'settings_screen.dart';
@@ -104,6 +106,7 @@ class _MessagesScreenState extends State<MessagesScreen> with WidgetsBindingObse
               tooltip: tr('فحص التذكيرات الآن'),
               icon: const Icon(Icons.refresh),
               onPressed: () async {
+                if (!await ensureFeature(context, Feature.autoReminders) || !context.mounted) return;
                 final n = await runAction(context, () => sv.reminders.run(force: true));
                 if (n != null && context.mounted) context.toast(tr('{n} تذكير جديد', {'n': n}));
                 await sv.dispatcher.dispatchQueued();
@@ -124,7 +127,9 @@ class _MessagesScreenState extends State<MessagesScreen> with WidgetsBindingObse
         floatingActionButton: g.can(Perm.campaigns)
             ? FloatingActionButton.extended(
                 heroTag: 'campaign',
-                onPressed: () => context.push(const CampaignScreen()),
+                onPressed: () async {
+                  if (await ensureFeature(context, Feature.campaigns) && context.mounted) context.push(const CampaignScreen());
+                },
                 icon: const Icon(Icons.campaign),
                 label: Text(tr('رسالة جماعية')),
               )
@@ -159,7 +164,8 @@ class _MessagesScreenState extends State<MessagesScreen> with WidgetsBindingObse
                         ? OutlinedButton.icon(onPressed: () => setState(() => _sequential = false), icon: const Icon(Icons.stop), label: Text(tr('إيقاف الإرسال المتتالي')))
                         : FilledButton.icon(
                             style: FilledButton.styleFrom(backgroundColor: const Color(0xFF25D366)),
-                            onPressed: () {
+                            onPressed: () async {
+                              if (!await ensureFeature(context, Feature.autoReminders)) return;
                               setState(() {
                                 _sequential = true;
                                 _sentInRun = 0;

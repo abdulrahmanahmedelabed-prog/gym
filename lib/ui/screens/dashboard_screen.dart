@@ -9,6 +9,8 @@ import '../../services/membership.dart';
 import '../../services/reports.dart';
 import '../theme.dart';
 import '../widgets/charts.dart';
+import '../../services/license.dart';
+import '../widgets/upgrade.dart';
 import '../widgets/common.dart';
 import 'leads_screen.dart';
 import 'lock_screen.dart';
@@ -111,7 +113,9 @@ class DashboardScreen extends StatelessWidget {
                   icon: Icons.payments_outlined,
                   color: brandSeed,
                   sub: '${tr('الشهر')}: ${fmtMoney(rep.collected(month))}',
-                  onTap: () => context.push(const ReportsScreen()),
+                  onTap: () async {
+                    if (await ensureFeature(context, Feature.fullReports) && context.mounted) context.push(const ReportsScreen());
+                  },
                 ),
               Kpi(
                 label: tr('ينتهي خلال 7 أيام'),
@@ -152,9 +156,13 @@ class DashboardScreen extends StatelessWidget {
                     onTap: () => context.push(const MembersScreen(standalone: true, pickForRenew: true))),
                 ActionCircle(icon: Icons.person_add_alt, label: tr('عضو جديد'), color: const Color(0xFF6366F1), onTap: () => context.push(const MemberFormScreen())),
                 if (g.can(Perm.sell))
-                  ActionCircle(icon: Icons.shopping_bag_outlined, label: tr('المتجر'), color: const Color(0xFFEA580C), onTap: () => context.push(const ShopScreen())),
+                  ActionCircle(icon: Icons.shopping_bag_outlined, label: tr('المتجر'), color: const Color(0xFFEA580C), onTap: () async {
+                    if (await ensureFeature(context, Feature.shop) && context.mounted) context.push(const ShopScreen());
+                  }),
                 ActionCircle(icon: Icons.campaign_outlined, label: tr('الرسائل'), color: const Color(0xFF16A34A), onTap: () => context.push(const MessagesScreen())),
-                ActionCircle(icon: Icons.person_search_outlined, label: tr('عملاء محتملون'), color: const Color(0xFFDB2777), onTap: () => context.push(const LeadsScreen())),
+                ActionCircle(icon: Icons.person_search_outlined, label: tr('عملاء محتملون'), color: const Color(0xFFDB2777), onTap: () async {
+                  if (await ensureFeature(context, Feature.leads) && context.mounted) context.push(const LeadsScreen());
+                }),
               ]),
             ),
           ),
@@ -207,7 +215,11 @@ class DashboardScreen extends StatelessWidget {
           if (canMoney)
             Section(
               title: tr('التحصيل آخر 14 يوماً'),
-              trailing: TextButton(onPressed: () => context.push(const ReportsScreen()), child: Text(tr('التقارير'))),
+              trailing: TextButton(
+                  onPressed: () async {
+                    if (await ensureFeature(context, Feature.fullReports) && context.mounted) context.push(const ReportsScreen());
+                  },
+                  child: Text(tr('التقارير'))),
               child: Card(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(8, 16, 8, 8),

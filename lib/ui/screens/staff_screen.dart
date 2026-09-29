@@ -6,6 +6,8 @@ import '../../core/money.dart';
 import '../../models/business.dart';
 import '../../services/data_tools.dart';
 import '../../services/reports.dart';
+import '../../services/license.dart';
+import '../widgets/upgrade.dart';
 import '../widgets/common.dart';
 import 'lock_screen.dart';
 
@@ -20,7 +22,20 @@ class StaffScreen extends StatelessWidget {
     final perf = {for (final t in context.services.reports.trainers(month)) t.trainerId: t};
     return Scaffold(
       appBar: AppBar(title: Text(tr('الموظفون والمدربون'))),
-      floatingActionButton: FloatingActionButton.extended(onPressed: () => _edit(context, null), icon: const Icon(Icons.person_add), label: Text(tr('موظف'))),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () async {
+          final active = g.staff.all.where((s) => s.active).length;
+          if (active >= g.license.staffLimit) {
+            await showUpgradeDialog(context,
+                feature: g.license.tier == Tier.free ? Feature.staff : Feature.auditLog,
+                message: tr('نسختك تسمح بـ {n} موظف. رقِّ النسخة لإضافة المزيد', {'n': g.license.staffLimit}));
+            return;
+          }
+          if (context.mounted) await _edit(context, null);
+        },
+        icon: const Icon(Icons.person_add),
+        label: Text(tr('موظف')),
+      ),
       body: ListView(padding: const EdgeInsets.only(bottom: 88), children: [
         for (final s in list)
           ListTile(

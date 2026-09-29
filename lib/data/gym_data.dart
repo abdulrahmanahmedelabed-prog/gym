@@ -13,6 +13,7 @@ import '../models/member.dart';
 import '../models/plan.dart';
 import '../models/settings.dart';
 import '../models/subscription.dart';
+import '../services/license.dart';
 
 /// جدول: السجلات في الذاكرة (للسرعة) ونسخة دائمة في قاعدة البيانات.
 class Coll<T extends Entity> {
@@ -68,13 +69,23 @@ class GymData extends ChangeNotifier {
 
   int _version = 0;
 
-  GymData(this.db, {DateTime Function()? clock}) : clock = clock ?? DateTime.now;
+  /// الترخيص (مجاني / Plus / Pro) — خاص بهذا الجهاز ولا ينتقل مع النسخة الاحتياطية
+  late final LicenseManager license;
+
+  GymData(this.db, {DateTime Function()? clock}) : clock = clock ?? DateTime.now {
+    license = LicenseManager(db, this.clock);
+  }
 
   static Future<GymData> open(Database db, {DateTime Function()? clock}) async {
     final g = GymData(db, clock: clock);
+    await g.license.load();
     await g.reload();
     return g;
   }
+
+  bool has(Feature f) => license.has(f);
+
+  void require(Feature f) => license.require(f);
 
   Future<void> reload() async {
     for (final t in _tables.values) {

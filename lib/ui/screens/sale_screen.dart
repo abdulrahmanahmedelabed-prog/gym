@@ -9,6 +9,8 @@ import '../../models/member.dart';
 import '../../models/plan.dart';
 import '../../services/membership.dart';
 import '../../services/reports.dart';
+import '../../services/license.dart';
+import '../widgets/upgrade.dart';
 import '../widgets/common.dart';
 import 'invoice_screen.dart';
 import 'member_card.dart';
@@ -214,7 +216,10 @@ class _SaleScreenState extends State<SaleScreen> {
             _PlanCard(
               plan: p,
               selected: _plan?.id == p.id,
-              onTap: () => setState(() => _selectPlan(p)),
+              onTap: () async {
+                if (p.kind == PlanKind.pt && !await ensureFeature(context, Feature.personalTraining)) return;
+                setState(() => _selectPlan(p));
+              },
             ),
         ]),
         if (_plan?.kind == PlanKind.pt) ...[
@@ -267,7 +272,9 @@ class _SaleScreenState extends State<SaleScreen> {
             child: TextField(
               controller: _coupon,
               textCapitalization: TextCapitalization.characters,
-              decoration: InputDecoration(labelText: tr('كوبون'), prefixIcon: const Icon(Icons.local_offer_outlined)),
+              readOnly: !g.has(Feature.offers),
+              onTap: g.has(Feature.offers) ? null : () => ensureFeature(context, Feature.offers),
+              decoration: InputDecoration(labelText: tr('كوبون'), prefixIcon: const Icon(Icons.local_offer_outlined), suffixIcon: lockFor(context, Feature.offers)),
               onChanged: (_) => setState(() => _rebuildSchedule()),
             ),
           ),
@@ -325,12 +332,16 @@ class _SaleScreenState extends State<SaleScreen> {
           contentPadding: EdgeInsets.zero,
           title: Text(tr('تقسيط الباقي')),
           subtitle: Text(tr('مع تذكير تلقائي قبل كل قسط')),
+          secondary: lockFor(context, Feature.installments),
           value: _installments,
-          onChanged: (v) => setState(() {
-            _installments = v;
-            _paid.text = '';
-            _rebuildSchedule();
-          }),
+          onChanged: (v) async {
+            if (v && !await ensureFeature(context, Feature.installments)) return;
+            setState(() {
+              _installments = v;
+              _paid.text = '';
+              _rebuildSchedule();
+            });
+          },
         ),
         if (_installments) ...[
           Row(children: [
@@ -466,7 +477,9 @@ class SaleDoneSheet extends StatelessWidget {
           Row(children: [
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: () => runAction(context, () => sv.shareInvoicePdf(inv)),
+                onPressed: () async {
+                  if (await ensureFeature(context, Feature.pdfPrint) && context.mounted) await runAction(context, () => sv.shareInvoicePdf(inv));
+                },
                 icon: const Icon(Icons.picture_as_pdf_outlined),
                 label: Text(tr('PDF')),
               ),
@@ -474,7 +487,9 @@ class SaleDoneSheet extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: () => runAction(context, () => sv.printInvoice(inv)),
+                onPressed: () async {
+                  if (await ensureFeature(context, Feature.pdfPrint) && context.mounted) await runAction(context, () => sv.printInvoice(inv));
+                },
                 icon: const Icon(Icons.print_outlined),
                 label: Text(tr('طباعة')),
               ),

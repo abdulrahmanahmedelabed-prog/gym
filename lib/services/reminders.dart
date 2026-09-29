@@ -10,6 +10,7 @@ import '../models/business.dart';
 import '../models/member.dart';
 import '../models/settings.dart';
 import '../models/subscription.dart';
+import 'license.dart';
 import 'membership.dart';
 import 'reports.dart';
 import 'templates.dart';
@@ -220,7 +221,7 @@ class ReminderEngine {
     }
 
     // ملخص يومي لصاحب النادي عن أمس
-    if (s.reminderOn(Rk.ownerDaily) && looksLikePhone(s.ownerPhone)) {
+    if (s.reminderOn(Rk.ownerDaily) && d.has(Feature.ownerSummary) && looksLikePhone(s.ownerPhone)) {
       final y = addDays(day, -1);
       add(build(
           phone: s.ownerPhone,
@@ -237,6 +238,7 @@ class ReminderEngine {
   Future<int> run({bool force = false, DateTime? at}) async {
     final now = at ?? d.now();
     final today = dayKey(now);
+    if (!d.has(Feature.autoReminders)) return 0;
     if (!force) {
       if (!s.autoReminders) return 0;
       if (s.lastReminderRun == today) return 0;

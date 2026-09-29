@@ -5,6 +5,7 @@ import '../data/gym_data.dart';
 import '../models/base.dart';
 import '../models/billing.dart';
 import '../models/business.dart';
+import 'license.dart';
 import 'membership.dart';
 
 /// سطر في سلة المتجر
@@ -103,6 +104,7 @@ class BillingService {
   /// بيع من متجر النادي (لعضو أو لزائر)
   Future<Invoice> sellProducts(List<CartLine> cart,
       {String? memberId, String? customerName, List<PayInput> payments = const [], double discount = 0}) async {
+    d.require(Feature.shop);
     if (cart.isEmpty) throw GymException(tr('السلة فارغة'));
     for (final l in cart) {
       final p = l.product;

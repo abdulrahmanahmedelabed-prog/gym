@@ -9,6 +9,7 @@ import '../data/gym_data.dart';
 import '../models/billing.dart';
 import '../models/member.dart';
 import 'billing.dart';
+import 'license.dart';
 import 'membership.dart';
 
 class PayGatewayException implements Exception {
@@ -214,7 +215,7 @@ class PaymentLinkService {
   final http.Client client;
   PaymentLinkService(this.d, {http.Client? client}) : client = client ?? http.Client();
 
-  bool get enabled => d.settings.payProvider != 'none';
+  bool get enabled => d.settings.payProvider != 'none' && gateway() != null;
 
   String get _returnUrl {
     final s = d.settings;
@@ -225,6 +226,7 @@ class PaymentLinkService {
 
   PayGateway? gateway() {
     final s = d.settings;
+    if (s.payProvider == 'link' ? !d.has(Feature.walletQr) : !d.has(Feature.paymentGateways)) return null;
     switch (s.payProvider) {
       case 'stripe':
         return StripeGateway(client, secretKey: s.paySecretKey, currency: s.currencyCode, returnUrl: _returnUrl);

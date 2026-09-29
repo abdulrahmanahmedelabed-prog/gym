@@ -3,6 +3,7 @@ import 'package:nadi_gym/core/ids.dart';
 import 'package:nadi_gym/data/gym_data.dart';
 import 'package:nadi_gym/models/member.dart';
 import 'package:nadi_gym/models/plan.dart';
+import 'package:nadi_gym/services/license.dart';
 import 'package:sembast/sembast_memory.dart';
 
 /// ساعة قابلة للتحكم في الاختبارات
@@ -17,10 +18,12 @@ class FakeClock {
 
 var _dbCounter = 0;
 
-Future<(GymData, FakeClock)> newGym([DateTime? start]) async {
+/// نادٍ للاختبار. الباقة Pro افتراضياً حتى لا يتأثر اختبار المنطق بانتهاء التجربة؛ [realLicense] لاختبار الترخيص نفسه.
+Future<(GymData, FakeClock)> newGym([DateTime? start, bool realLicense = false]) async {
   final clock = FakeClock(start ?? DateTime(2026, 9, 29, 12));
   final db = await databaseFactoryMemory.openDatabase('test_${_dbCounter++}.db');
   final g = await GymData.open(db, clock: clock.call);
+  if (!realLicense) g.license.debugTier = Tier.pro;
   return (g, clock);
 }
 

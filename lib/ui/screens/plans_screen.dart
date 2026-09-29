@@ -7,6 +7,8 @@ import '../../core/money.dart';
 import '../../models/business.dart';
 import '../../models/member.dart';
 import '../../models/plan.dart';
+import '../../services/license.dart';
+import '../widgets/upgrade.dart';
 import '../widgets/common.dart';
 import 'sale_screen.dart';
 
@@ -130,7 +132,10 @@ class _PlanFormScreenState extends State<PlanFormScreen> {
             ButtonSegment(value: PlanKind.pt, label: Text(tr('تدريب شخصي')), icon: const Icon(Icons.sports)),
           ],
           selected: {p.kind},
-          onSelectionChanged: (v) => setState(() => p.kind = v.first),
+          onSelectionChanged: (v) async {
+            if (v.first == PlanKind.pt && !await ensureFeature(context, Feature.personalTraining)) return;
+            setState(() => p.kind = v.first);
+          },
         ),
         const SizedBox(height: 12),
         Row(children: [

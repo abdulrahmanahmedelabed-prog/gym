@@ -7,6 +7,8 @@ import '../../models/billing.dart';
 import '../../models/business.dart';
 import '../../services/reports.dart';
 import '../theme.dart';
+import '../../services/license.dart';
+import '../widgets/upgrade.dart';
 import '../widgets/common.dart';
 import '../widgets/dialogs.dart';
 import 'invoice_screen.dart';
@@ -22,7 +24,7 @@ class FinanceScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final g = context.gymWatch;
-    final canExp = g.can(Perm.expenses);
+    final canExp = g.can(Perm.expenses) && g.has(Feature.fullReports);
     return DefaultTabController(
       length: canExp ? 4 : 3,
       child: Scaffold(
@@ -30,9 +32,19 @@ class FinanceScreen extends StatelessWidget {
           title: Text(tr('المالية')),
           actions: [
             if (g.can(Perm.sell))
-              IconButton(tooltip: tr('المتجر'), icon: const Icon(Icons.shopping_bag_outlined), onPressed: () => context.push(const ShopScreen())),
+              IconButton(
+                  tooltip: tr('المتجر'),
+                  icon: const Icon(Icons.shopping_bag_outlined),
+                  onPressed: () async {
+                    if (await ensureFeature(context, Feature.shop) && context.mounted) context.push(const ShopScreen());
+                  }),
             if (g.can(Perm.reports))
-              IconButton(tooltip: tr('التقارير'), icon: const Icon(Icons.insights_outlined), onPressed: () => context.push(const ReportsScreen())),
+              IconButton(
+                  tooltip: tr('التقارير'),
+                  icon: const Icon(Icons.insights_outlined),
+                  onPressed: () async {
+                    if (await ensureFeature(context, Feature.fullReports) && context.mounted) context.push(const ReportsScreen());
+                  }),
           ],
           bottom: TabBar(isScrollable: true, tabAlignment: TabAlignment.start, tabs: [
             Tab(text: tr('الفواتير')),

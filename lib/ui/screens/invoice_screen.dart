@@ -9,6 +9,8 @@ import '../../models/business.dart';
 import '../../models/member.dart';
 import '../../services/reports.dart';
 import '../theme.dart';
+import '../../services/license.dart';
+import '../widgets/upgrade.dart';
 import '../widgets/common.dart';
 import '../widgets/dialogs.dart';
 import 'member_detail_screen.dart';
@@ -37,8 +39,18 @@ class InvoiceScreen extends StatelessWidget {
       appBar: AppBar(
         title: Text(inv.number),
         actions: [
-          IconButton(tooltip: tr('طباعة'), icon: const Icon(Icons.print_outlined), onPressed: () => _print(context, inv)),
-          IconButton(tooltip: tr('مشاركة PDF'), icon: const Icon(Icons.picture_as_pdf_outlined), onPressed: () => runAction(context, () => sv.shareInvoicePdf(inv))),
+          IconButton(
+              tooltip: tr('طباعة'),
+              icon: const Icon(Icons.print_outlined),
+              onPressed: () async {
+                if (await ensureFeature(context, Feature.pdfPrint) && context.mounted) await _print(context, inv);
+              }),
+          IconButton(
+              tooltip: tr('مشاركة PDF'),
+              icon: const Icon(Icons.picture_as_pdf_outlined),
+              onPressed: () async {
+                if (await ensureFeature(context, Feature.pdfPrint) && context.mounted) await runAction(context, () => sv.shareInvoicePdf(inv));
+              }),
           PopupMenuButton<String>(
             onSelected: (v) => _menu(context, v, inv),
             itemBuilder: (_) => [
@@ -194,6 +206,7 @@ class InvoiceScreen extends StatelessWidget {
     ]);
     if (v == null || !context.mounted) return;
     if (v == 'pdf') {
+      if (!await ensureFeature(context, Feature.pdfPrint) || !context.mounted) return;
       await runAction(context, () => sv.shareInvoicePdf(inv));
       return;
     }

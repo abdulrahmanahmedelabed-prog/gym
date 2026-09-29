@@ -11,6 +11,8 @@ import '../../models/business.dart';
 import '../../models/member.dart';
 import '../../services/checkin.dart';
 import '../theme.dart';
+import '../../services/license.dart';
+import '../widgets/upgrade.dart';
 import '../widgets/common.dart';
 import '../widgets/dialogs.dart';
 import 'dashboard_screen.dart';
@@ -111,7 +113,9 @@ class _CheckinScreenState extends State<CheckinScreen> {
           IconButton(
             tooltip: tr('شاشة الدخول الذاتي'),
             icon: const Icon(Icons.tablet_android),
-            onPressed: () => context.push(const KioskScreen()),
+            onPressed: () async {
+              if (await ensureFeature(context, Feature.kiosk) && context.mounted) context.push(const KioskScreen());
+            },
           ),
         ],
       ),

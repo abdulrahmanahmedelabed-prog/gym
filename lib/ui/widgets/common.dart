@@ -8,9 +8,11 @@ import '../../core/i18n.dart';
 import '../../core/money.dart';
 import '../../data/gym_data.dart';
 import '../../models/member.dart';
+import '../../services/license.dart';
 import '../../services/membership.dart';
 import '../app_services.dart';
 import '../theme.dart';
+import 'upgrade.dart';
 
 extension Ctx on BuildContext {
   GymData get gym => read<GymData>();
@@ -40,6 +42,9 @@ Future<T?> runAction<T>(BuildContext context, Future<T> Function() action, {Stri
     final r = await action();
     if (success != null && context.mounted) context.toast(success);
     return r;
+  } on LicenseException catch (e) {
+    if (context.mounted) await showUpgradeDialog(context, feature: e.feature, message: e.message);
+    return null;
   } catch (e) {
     if (context.mounted) context.toast(e.toString().replaceFirst('Exception: ', ''), error: true);
     return null;
