@@ -66,7 +66,8 @@ jobs:
           name: nadi-gym-apk-emulator
           path: nadi-gym-x86_64.apk
       - name: Build web demo
-        run: flutter build web --release --base-href /gym/
+        # المحرك (CanvasKit) داخل الموقع نفسه بدل تحميله من خوادم Google: يعمل حتى لو كانت محجوبة أو بطيئة
+        run: flutter build web --release --base-href /gym/ --no-web-resources-cdn
       - uses: actions/upload-artifact@v4
         with:
           name: web
