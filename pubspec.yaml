@@ -1,4 +1,4 @@
-name: gym
+name: nadi_gym
 description: Gym club management app.
 publish_to: 'none'
 version: 0.1.0+1

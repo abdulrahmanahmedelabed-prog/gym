@@ -1,4 +1,4 @@
-import 'package:gym/reminders.dart';
+import 'package:nadi_gym/reminders.dart';
 import 'package:test/test.dart';
 
 void main() {

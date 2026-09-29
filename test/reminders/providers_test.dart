@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:gym/reminders.dart';
+import 'package:nadi_gym/reminders.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:test/test.dart';
