@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -97,6 +98,12 @@ class AppServices {
   }
 
   Future<String> openManual(Message m) async {
+    if (isDesktop && m.channel == Channel.sms) {
+      // لا تطبيق رسائل على الكمبيوتر: يُنسخ النص ليُرسل من الجوال
+      await Clipboard.setData(ClipboardData(text: '${m.phone}\n${m.body}'));
+      await dispatcher.markSentManually(m);
+      return tr('نُسخ نص الرسالة ورقم الجوال — أرسلها من جوالك');
+    }
     final ok = await launchUrl(dispatcher.manualLink(m), mode: LaunchMode.externalApplication);
     if (!ok) throw SendException(tr('تعذر فتح التطبيق'));
     await dispatcher.markSentManually(m);
@@ -108,7 +115,15 @@ class AppServices {
   Future<void> openWhatsApp(String phone, [String text = '']) =>
       launchUrl(Dispatcher.whatsappTo(phone, d.settings.countryCode, text), mode: LaunchMode.externalApplication);
 
+  /// على الكمبيوتر لا توجد قائمة مشاركة: يُحفظ الملف حيث يختار المستخدم
+  static bool get isDesktop =>
+      !kIsWeb && (defaultTargetPlatform == TargetPlatform.windows || defaultTargetPlatform == TargetPlatform.linux || defaultTargetPlatform == TargetPlatform.macOS);
+
   Future<void> shareFile(Uint8List bytes, String name, String mime, {String? text}) async {
+    if (isDesktop) {
+      await FilePicker.saveFile(fileName: name, bytes: bytes, mimeType: mime, dialogTitle: tr('حفظ الملف'));
+      return;
+    }
     await SharePlus.instance.share(ShareParams(
       files: [XFile.fromData(bytes, name: name, mimeType: mime)],
       fileNameOverrides: [name],

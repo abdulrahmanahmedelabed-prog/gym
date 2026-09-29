@@ -24,6 +24,18 @@ void main() {
     expect(t.takeException(), isNull);
   });
 
+  testWidgets('جولة على شاشة الكمبيوتر (ويندوز)', (t) async {
+    t.view.physicalSize = const Size(1280, 800);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    final (g, _) = (await t.runAsync(() => newGym(DateTime(2026, 9, 29, 18, 30))))!;
+    await t.runAsync(() => DemoData(g).generate(members: 40));
+    g.settings.onboarded = true;
+    await t.pumpWidget(GymApp(gym: g, startBackground: false));
+    await tour(t, (name) async {});
+    expect(t.takeException(), isNull);
+  });
+
   testWidgets('الواجهة بالإنجليزية', (t) async {
     t.view.physicalSize = const Size(412 * 2.6, 915 * 2.6);
     t.view.devicePixelRatio = 2.6;

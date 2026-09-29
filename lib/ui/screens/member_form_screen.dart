@@ -8,6 +8,7 @@ import '../../core/i18n.dart';
 import '../../models/member.dart';
 import '../../services/license.dart';
 import '../widgets/common.dart';
+import '../widgets/pay_widgets.dart';
 import '../widgets/upgrade.dart';
 import 'members_screen.dart';
 import 'sale_screen.dart';
@@ -141,7 +142,7 @@ class _MemberFormScreenState extends State<MemberFormScreen> {
                 child: PopupMenuButton<ImageSource?>(
                   onSelected: (s) => s == null ? setState(() => _m.photo = null) : _photo(s),
                   itemBuilder: (_) => [
-                    PopupMenuItem(value: ImageSource.camera, child: Text(tr('التقاط صورة'))),
+                    if (canScanWithCamera) PopupMenuItem(value: ImageSource.camera, child: Text(tr('التقاط صورة'))),
                     PopupMenuItem(value: ImageSource.gallery, child: Text(tr('من المعرض'))),
                     if (_m.photo != null) PopupMenuItem(value: null, child: Text(tr('حذف الصورة'))),
                   ],

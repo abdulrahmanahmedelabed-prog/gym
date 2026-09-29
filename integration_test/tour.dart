@@ -25,7 +25,9 @@ Future<void> waitFor(WidgetTester t, Finder f, {int seconds = 60}) async {
   throw TestFailure('لم يظهر: $f');
 }
 
-Finder navItem(String label) => find.descendant(of: find.byType(NavigationBar), matching: find.text(label));
+/// عنصر التنقل: الشريط السفلي على الجوال أو الجانبي على الشاشات الكبيرة
+Finder navItem(String label) =>
+    find.descendant(of: find.byWidgetPredicate((w) => w is NavigationBar || w is NavigationRail), matching: find.text(label));
 
 Future<void> tap(WidgetTester t, Finder f) async {
   await t.ensureVisible(f.first);

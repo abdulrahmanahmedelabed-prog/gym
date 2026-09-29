@@ -1,7 +1,7 @@
-name: Android APK + emulator test + web demo
+name: Build & release (Android, iPhone, Windows, Web)
 
-# مع كل تحديث: اختبارات، بناء APK ونشره كإصدار (رابط تحميل ثابت)،
-# تشغيل التطبيق على محاكي أندرويد حقيقي مع صور للشاشات، ونسخة ويب للتجربة من المتصفح.
+# مع كل تحديث: اختبارات ← بناء أندرويد وآيفون وويندوز والويب ← تشغيل كل نسخة على نظامها الحقيقي
+# (محاكي أندرويد 14، محاكي آيفون، ويندوز) وجولة آلية على كل الشاشات ← نشر إصدار فيه الملفات كلها.
 on:
   push:
     branches: [main]
@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: android-${{ github.ref }}
+  group: build-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -19,6 +19,7 @@ env:
 
 jobs:
   build:
+    name: Tests + Android APK + Web
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -57,6 +58,7 @@ jobs:
           path: build/web
 
   emulator:
+    name: Android 14 emulator test
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -96,31 +98,159 @@ jobs:
           name: emulator-screenshots
           path: emulator-shots
 
+  windows:
+    name: Windows app + installer + test
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Build Windows app
+        run: flutter build windows --release --build-number=${{ github.run_number }}
+      - name: Portable zip
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath dist\nadi-gym-windows-portable.zip
+      - name: Installer (Inno Setup)
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          & $iscc "/DAppVersion=1.0.${{ github.run_number }}" installer\nadi_gym.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Launch release build and take a screenshot
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force windows-shots | Out-Null
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $p = Start-Process build\windows\x64\runner\Release\nadi_gym.exe -PassThru
+          Start-Sleep -Seconds 20
+          $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+          [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+          $bmp.Save("windows-shots\00_windows_first_run.png")
+          if ($p.HasExited) { "APP CRASHED ($($p.ExitCode))" | Tee-Object windows-shots\status.txt; exit 1 }
+          "APP RUNNING" | Tee-Object windows-shots\status.txt
+          Stop-Process -Id $p.Id -Force
+      - name: Full tour on Windows (integration test)
+        run: flutter test integration_test/app_test.dart -d windows
+      - name: Screenshot with demo data
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $p = Start-Process build\windows\x64\runner\Release\nadi_gym.exe -PassThru
+          Start-Sleep -Seconds 20
+          $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+          [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+          $bmp.Save("windows-shots\01_windows_dashboard.png")
+          Stop-Process -Id $p.Id -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-screenshots
+          path: windows-shots
+
+  ios:
+    name: iPhone build + simulator test
+    runs-on: macos-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Build iPhone app (unsigned IPA)
+        run: |
+          flutter build ios --release --no-codesign --build-number=${{ github.run_number }}
+          mkdir -p Payload dist
+          cp -R build/ios/iphoneos/Runner.app Payload/
+          zip -qr dist/nadi-gym-ios-unsigned.ipa Payload
+      - name: Boot iPhone simulator
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          d = json.load(sys.stdin)['devices']
+          for runtime in sorted((k for k in d if 'iOS' in k), reverse=True):
+              phones = [x for x in d[runtime] if x['name'].startswith('iPhone')]
+              if phones:
+                  print(phones[0]['udid']); break
+          ")
+          echo "Simulator: $UDID"
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+      - name: Full tour on iPhone simulator
+        run: |
+          set +e
+          mkdir -p ios-shots
+          flutter drive --driver=test_driver/integration_test.dart --target=integration_test/app_test.dart -d "$UDID" 2>&1 | tee ios-shots/integration_test.log
+          status=${PIPESTATUS[0]}
+          mv -f screenshots/*.png ios-shots/ 2>/dev/null
+          exit $status
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios
+          path: dist
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-screenshots
+          path: ios-shots
+
   release:
-    needs: [build, emulator]
+    needs: [build, emulator, windows, ios]
+    # أندرويد شرط أساسي؛ ويندوز وآيفون يُضافان إن نجحا
+    if: always() && needs.build.result == 'success' && needs.emulator.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: nadi-gym-apk
-      - uses: actions/download-artifact@v4
-        with:
-          name: emulator-screenshots
-          path: emulator-shots
-      - name: Zip screenshots
-        run: cd emulator-shots && zip -r ../emulator-screenshots.zip . && cd ..
+          path: art
+      - name: Collect files
+        run: |
+          mkdir -p out
+          cp art/nadi-gym-apk/nadi-gym.apk out/
+          cp art/windows/* out/ 2>/dev/null || true
+          cp art/ios/* out/ 2>/dev/null || true
+          for s in emulator-screenshots windows-screenshots ios-screenshots; do
+            if [ -d "art/$s" ]; then (cd "art/$s" && zip -qr "../../out/$s.zip" .); fi
+          done
+          ls -la out
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.run_number }}
           name: "نادي جيم — نسخة ${{ github.run_number }}"
           make_latest: true
+          fail_on_unmatched_files: false
           body: |
-            ثبّت التطبيق على جوال أندرويد: حمّل **nadi-gym.apk** وافتحه (اسمح بالتثبيت من مصادر غير معروفة عند السؤال).
-            هذه النسخة مُختبرة آلياً على محاكي أندرويد 14 — صور الشاشات في emulator-screenshots.zip.
-            رابط ثابت لآخر نسخة دائماً: https://github.com/${{ github.repository }}/releases/latest/download/nadi-gym.apk
-          files: |
-            nadi-gym.apk
-            emulator-screenshots.zip
+            ### 📱 أندرويد
+            حمّل **nadi-gym.apk** على الجوال وافتحه (اسمح بالتثبيت من مصادر غير معروفة). مُختبر على محاكي أندرويد 14.
+            رابط ثابت لآخر نسخة: https://github.com/${{ github.repository }}/releases/latest/download/nadi-gym.apk
+
+            ### 🖥 ويندوز
+            **nadi-gym-windows-setup.exe** (مثبّت، لا يحتاج صلاحيات المدير) أو **nadi-gym-windows-portable.zip** (فك الضغط وشغّل nadi_gym.exe).
+            رابط ثابت: https://github.com/${{ github.repository }}/releases/latest/download/nadi-gym-windows-setup.exe
+
+            ### 🍏 آيفون
+            **nadi-gym-ios-unsigned.ipa**: نسخة غير موقّعة. للتثبيت على آيفون وقّعها بحساب Apple الخاص بك (مثلاً عبر Sideloadly أو AltStore بحساب Apple ID مجاني، أو TestFlight بحساب مطوّر).
+            مُختبرة على محاكي آيفون — الصور في ios-screenshots.zip.
+
+            (إن لم يظهر ملف ويندوز أو آيفون في هذا الإصدار فقد تعذّر بناؤه هذه المرة؛ النسخة السابقة متاحة في الإصدارات الأقدم.)
+          files: out/*
 
   web:
     needs: build
