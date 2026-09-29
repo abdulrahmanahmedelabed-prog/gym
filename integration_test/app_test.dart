@@ -30,7 +30,16 @@ void main() {
 
     // أول تشغيل: شاشة الإعداد. على الجوالات القديمة البطيئة قد يتأخر أول رسم، فننتظر أياً من الشاشتين
     final demo = find.text('جرّب ببيانات نادٍ تجريبي');
-    await waitFor(t, find.byWidgetPredicate((w) => w is Text && (w.data == 'جرّب ببيانات نادٍ تجريبي' || w.data == 'الرئيسية')), seconds: 120);
+    try {
+      await waitFor(t, find.byWidgetPredicate((w) => w is Text && (w.data == 'جرّب ببيانات نادٍ تجريبي' || w.data == 'الرئيسية')), seconds: 120);
+    } catch (_) {
+      // تشخيص: ماذا يظهر على الشاشة فعلاً؟
+      final texts = find.byType(Text).evaluate().map((e) => (e.widget as Text).data ?? '<rich>').take(40).toList();
+      debugPrint('DIAG texts(${texts.length}): $texts');
+      debugPrint('DIAG widgets: ${find.byType(Widget).evaluate().length}, errors: ${find.byType(ErrorWidget).evaluate().length}, '
+          'scaffolds: ${find.byType(Scaffold).evaluate().length}, exception: ${t.takeException()}');
+      rethrow;
+    }
     if (demo.evaluate().isNotEmpty) {
       await shot('00_onboarding');
       await t.tap(demo);

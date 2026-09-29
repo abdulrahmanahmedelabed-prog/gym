@@ -18,6 +18,9 @@ adb shell pm grant com.nadi.gym android.permission.CAMERA || true
 adb shell am start -W -n com.nadi.gym/com.nadi.nadi_gym.MainActivity
 sleep 20
 adb exec-out screencap -p > emulator-shots/00_release_apk_launch.png
+# تشخيص: حجم الصورة (الشاشة السوداء أو الفارغة تكون صغيرة جداً) والنصوص الظاهرة فعلاً على الشاشة
+ls -la emulator-shots/00_release_apk_launch.png
+adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb shell cat /sdcard/ui.xml 2>/dev/null | tr '>' '\n' | grep -o 'content-desc="[^"]*"\|text="[^"]*"' | grep -v '=""' | head -30 | tee emulator-shots/release_screen_texts.txt || true
 # ذاكرة التطبيق الفعلية بعد الفتح
 adb shell dumpsys meminfo com.nadi.gym | grep -E "TOTAL|Native Heap" | head -3 | tee emulator-shots/memory.txt || true
 adb logcat -d -t 400 > emulator-shots/logcat_release.txt || true
