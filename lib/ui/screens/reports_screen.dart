@@ -129,7 +129,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   selected: _p == p,
                   onSelected: (_) async {
                     if (p == _Period.custom) {
-                      final dr = await showDateRangePicker(context: context, firstDate: DateTime(2015), lastDate: DateTime(2100), initialDateRange: DateTimeRange(start: r.from, end: r.to));
+                      final dr = await showDateRangePicker(context: context, firstDate: DateTime(2000), lastDate: DateTime(2100), initialDateRange: DateTimeRange(start: r.from, end: r.to));
                       if (dr == null) return;
                       _custom = Range(dr.start, dr.end);
                     }

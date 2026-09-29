@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
+import '../../core/phone.dart';
 import '../../core/ids.dart';
 import '../../core/money.dart';
 import '../../models/activity.dart';
@@ -206,7 +207,7 @@ class MemberDetailScreen extends StatelessWidget {
           if (context.mounted) await runAction(context, () => sv.members.unfreeze(sub!), success: tr('انتهى التجميد'));
         }
       case 'adjust':
-        final d = await pickDay(context, sub!.end);
+        final d = await pickDay(context, sub!.end, first: sub.start);
         if (d == null || !context.mounted) return;
         final reason = await askText(context, tr('سبب التعديل'), hint: tr('تعويض، خطأ إدخال...'));
         if (reason == null || !context.mounted) return;
@@ -286,7 +287,7 @@ class MemberDetailScreen extends StatelessWidget {
     );
     if (ok != true || !context.mounted) return;
     await runAction(context,
-        () => context.services.members.freeze(s, start: start, days: int.tryParse(days.text) ?? 0, reason: reason.text.trim().isEmpty ? null : reason.text.trim()),
+        () => context.services.members.freeze(s, start: start, days: parseIntInput(days.text) ?? 0, reason: reason.text.trim().isEmpty ? null : reason.text.trim()),
         success: tr('تم التجميد، ومُدّد الاشتراك'));
   }
 
@@ -363,7 +364,7 @@ class MemberDetailScreen extends StatelessWidget {
         () => context.services.billing.customInvoice(
               memberId: m.id,
               items: [InvoiceItem(kind: kind, description: desc.text.trim().isEmpty ? tr('خدمة') : desc.text.trim(), unitPrice: amount)],
-              payments: paidNow ? [PayInput(amount, PayMethod.cash)] : const [],
+              payments: paidNow ? [PayInput(context.services.members.totalWithTax(amount), PayMethod.cash)] : const [],
             ));
     if (inv != null && context.mounted) context.push(InvoiceScreen(invoiceId: inv.id));
   }

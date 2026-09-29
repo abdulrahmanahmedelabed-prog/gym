@@ -94,7 +94,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   Future<void> _edit(BuildContext context, Lead? l0) async {
     final g = context.gym;
-    final l = l0 ?? Lead(id: newId(), name: '', phone: '', createdAt: g.now(), followUp: addDays(g.today, 1));
+    final l = l0 != null ? Lead.fromMap(l0.toMap()) : Lead(id: newId(), name: '', phone: '', createdAt: g.now(), followUp: addDays(g.today, 1));
     final name = TextEditingController(text: l.name);
     final phone = TextEditingController(text: l.phone);
     final notes = TextEditingController(text: l.notes ?? '');
@@ -134,7 +134,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
                   trailing: Text(l.followUp == null ? '—' : dayKey(l.followUp!)),
                   onTap: () async {
                     final d = await pickDay(c, l.followUp ?? g.today);
-                    set(() => l.followUp = d);
+                    if (d != null) set(() => l.followUp = d);
                   },
                 ),
                 TextField(controller: notes, maxLines: 2, decoration: InputDecoration(labelText: tr('ملاحظات'))),

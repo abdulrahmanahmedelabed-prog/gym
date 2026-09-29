@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/i18n.dart';
+import '../../core/phone.dart';
 import '../../core/ids.dart';
 import '../../core/money.dart';
 import '../../models/business.dart';
@@ -55,7 +56,7 @@ class StaffScreen extends StatelessWidget {
 
   Future<void> _edit(BuildContext context, Staff? s0) async {
     final g = context.gym;
-    final s = s0 ?? Staff(id: newId(), name: '');
+    final s = s0 != null ? Staff.fromMap(s0.toMap()) : Staff(id: newId(), name: '');
     final name = TextEditingController(text: s.name);
     final phone = TextEditingController(text: s.phone ?? '');
     final pin = TextEditingController();
@@ -117,7 +118,7 @@ class StaffScreen extends StatelessWidget {
     );
     if (ok != true || name.text.trim().isEmpty || !context.mounted) return;
     final p = pin.text.trim();
-    if (p.isNotEmpty && (p.length < 4 || int.tryParse(p) == null)) {
+    if (p.isNotEmpty && (p.length < 4 || parseIntInput(p) == null)) {
       context.toast(tr('الرقم السري 4 أرقام على الأقل'), error: true);
       return;
     }
@@ -134,6 +135,11 @@ class StaffScreen extends StatelessWidget {
       return;
     }
     await g.putAll([s, g.auditEntry('staff', '${s.name} (${roleName(s.role)})')]);
+    // المستخدم الحالي عدّل بياناته: تُطبَّق صلاحياته الجديدة فوراً
+    if (g.user?.id == s.id) {
+      g.user = s;
+      g.touch();
+    }
   }
 
   String _roleHint(Role r) => switch (r) {

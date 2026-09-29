@@ -23,7 +23,7 @@ import 'membership.dart';
 // الرقم السري للموظفين
 // -----------------------------------------------------------------------------
 
-String hashPin(String pin, String staffId) => sha256.convert(utf8.encode('nadi|$staffId|$pin')).toString();
+String hashPin(String pin, String staffId) => sha256.convert(utf8.encode('nadi|$staffId|${normalizeDigits(pin).trim()}')).toString();
 
 bool checkPin(Staff s, String pin) => s.pinHash != null && s.pinHash == hashPin(pin, s.id);
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
+import '../../core/phone.dart';
 import '../../core/ids.dart';
 import '../../core/money.dart';
 import '../../models/business.dart';
@@ -71,7 +72,9 @@ class OffersScreen extends StatelessWidget {
 
 Future<void> editOffer(BuildContext context, Offer? o0) async {
   final g = context.gym;
-  final o = o0 ?? Offer(id: newId(), name: '', start: g.today, end: addDays(g.today, 30), value: 10);
+  // نعدّل نسخة: الإلغاء لا يغيّر العرض الأصلي
+  final o = o0 == null ? Offer(id: newId(), name: '', start: g.today, end: addDays(g.today, 30), value: 10) : Offer.fromMap(o0.toMap());
+  String? err;
   final name = TextEditingController(text: o.name);
   final value = TextEditingController(text: o.value == 0 ? '' : fmtNum(o.value));
   final bonus = TextEditingController(text: o.bonusDays == 0 ? '' : '${o.bonusDays}');
@@ -116,7 +119,7 @@ Future<void> editOffer(BuildContext context, Offer? o0) async {
                   child: OutlinedButton(
                     onPressed: () async {
                       final d = await pickDay(c, o.start ?? g.today);
-                      set(() => o.start = d);
+                      if (d != null) set(() => o.start = d);
                     },
                     child: Text('${tr('من')} ${o.start == null ? '—' : dayKey(o.start!)}'),
                   ),
@@ -125,8 +128,8 @@ Future<void> editOffer(BuildContext context, Offer? o0) async {
                 Expanded(
                   child: OutlinedButton(
                     onPressed: () async {
-                      final d = await pickDay(c, o.end ?? addDays(g.today, 30));
-                      set(() => o.end = d);
+                      final d = await pickDay(c, o.end ?? addDays(g.today, 30), first: o.start);
+                      if (d != null) set(() => o.end = d);
                     },
                     child: Text('${tr('إلى')} ${o.end == null ? tr('مفتوح') : dayKey(o.end!)}'),
                   ),
@@ -149,25 +152,50 @@ Future<void> editOffer(BuildContext context, Offer? o0) async {
                 value: o.newMembersOnly,
                 onChanged: (v) => set(() => o.newMembersOnly = v),
               ),
+              if (err != null) Text(err!, style: TextStyle(color: Theme.of(c).colorScheme.error, fontWeight: FontWeight.w700)),
             ]),
           ),
         ),
         actions: [
           if (o0 != null) TextButton(onPressed: () => Navigator.pop(c, 'delete'), child: Text(tr('حذف'))),
           TextButton(onPressed: () => Navigator.pop(c), child: Text(tr('إلغاء'))),
-          FilledButton(onPressed: () => Navigator.pop(c, 'save'), child: Text(tr('حفظ'))),
+          FilledButton(
+            onPressed: () {
+              final v = parseAmount(value.text) ?? 0;
+              final b = parseIntInput(bonus.text) ?? 0;
+              final e = name.text.trim().isEmpty
+                  ? tr('اكتب اسم العرض')
+                  : (v < 0 || b < 0)
+                      ? tr('القيم لا تكون سالبة')
+                      : (o.type == 'percent' && v > 100)
+                          ? tr('النسبة لا تزيد عن 100%')
+                          : (o.type == 'price' && v <= 0)
+                              ? tr('اكتب السعر الخاص')
+                              : (v == 0 && b == 0)
+                                  ? tr('حدّد خصماً أو أياماً مجانية')
+                                  : (o.start != null && o.end != null && o.end!.isBefore(o.start!))
+                                      ? tr('تاريخ النهاية قبل البداية')
+                                      : null;
+              if (e != null) {
+                set(() => err = e);
+                return;
+              }
+              Navigator.pop(c, 'save');
+            },
+            child: Text(tr('حفظ')),
+          ),
         ],
       ),
     ),
   );
   if (ok == 'delete') {
-    await g.remove(o);
+    await g.remove(o0!);
     return;
   }
-  if (ok != 'save' || name.text.trim().isEmpty) return;
+  if (ok != 'save') return;
   o
     ..name = name.text.trim()
     ..value = parseAmount(value.text) ?? 0
-    ..bonusDays = int.tryParse(bonus.text) ?? 0;
+    ..bonusDays = parseIntInput(bonus.text) ?? 0;
   await g.putAll([o, g.auditEntry('offer', '${o.name}: ${offerSummary(o)}')]);
 }

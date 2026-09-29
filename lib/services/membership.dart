@@ -1,5 +1,6 @@
 import '../core/dates.dart';
 import '../core/i18n.dart';
+import '../core/phone.dart';
 import '../core/ids.dart';
 import '../core/money.dart';
 import '../data/gym_data.dart';
@@ -66,7 +67,9 @@ class SaleRequest {
   });
 }
 
-typedef SaleQuote = ({double price, double fee, double couponDiscount, double offerDiscount, double manualDiscount, Offer? offer, double total});
+/// [total] هو ما سيُكتب في الفاتورة بالضبط (مع الضريبة المضافة إن كانت الأسعار غير شاملة لها)،
+/// و[tax] قيمة الضريبة المضافة فوق السعر (صفر إن كانت شاملة أو معطلة)
+typedef SaleQuote = ({double price, double fee, double couponDiscount, double offerDiscount, double manualDiscount, Offer? offer, double tax, double total});
 
 class SaleResult {
   final Subscription subscription;
@@ -96,6 +99,7 @@ class MembershipService {
   /// حفظ عضو جديد: يأخذ رقم عضوية تسلسلياً (يبدأ من 1001)
   Future<Member> addMember(Member m) async {
     if (m.name.trim().isEmpty) throw GymException(tr('اكتب اسم العضو'));
+    m.phone = normalizeDigits(m.phone).trim();
     final dup = findByPhone(m.phone);
     if (dup != null && dup.id != m.id) {
       throw GymException(tr('رقم الجوال مسجل للعضو {name} (رقم {code})', {'name': dup.name, 'code': dup.code}));
@@ -107,6 +111,7 @@ class MembershipService {
   }
 
   Future<void> updateMember(Member m) async {
+    m.phone = normalizeDigits(m.phone).trim();
     final dup = findByPhone(m.phone);
     if (dup != null && dup.id != m.id) {
       throw GymException(tr('رقم الجوال مسجل للعضو {name} (رقم {code})', {'name': dup.name, 'code': dup.code}));
@@ -115,11 +120,11 @@ class MembershipService {
   }
 
   Member? findByPhone(String phone) {
-    final digits = phone.replaceAll(RegExp(r'\D'), '');
+    final digits = digitsOnly(phone);
     if (digits.length < 7) return null;
     final tail = digits.substring(digits.length - 9 < 0 ? 0 : digits.length - 9);
     for (final m in d.members.all) {
-      final md = m.phone.replaceAll(RegExp(r'\D'), '');
+      final md = digitsOnly(m.phone);
       if (md.length >= 7 && md.endsWith(tail)) return m;
     }
     return null;
@@ -127,21 +132,21 @@ class MembershipService {
 
   /// بحث بالاسم أو الجوال أو رقم العضوية أو رمز البطاقة
   List<Member> search(String q, {bool includeArchived = false}) {
-    q = q.trim().toLowerCase();
+    q = normalizeDigits(q).trim().toLowerCase();
     final list = d.members.all.where((m) => includeArchived || !m.archived);
     if (q.isEmpty) return list.toList();
     final code = int.tryParse(q);
     return list.where((m) {
       if (code != null && m.code == code) return true;
       if (m.name.toLowerCase().contains(q)) return true;
-      if (q.length >= 3 && m.phone.replaceAll(RegExp(r'\D'), '').contains(q)) return true;
+      if (q.length >= 3 && digitsOnly(m.phone).contains(q)) return true;
       return m.cardToken.toLowerCase() == q;
     }).toList();
   }
 
   /// قراءة محتوى رمز QR أو باركود بطاقة العضو
   Member? resolveScan(String raw) {
-    var s = raw.trim();
+    var s = normalizeDigits(raw).trim();
     if (s.toUpperCase().startsWith('NADI:')) s = s.substring(5);
     final byToken = d.memberByToken(s.toUpperCase());
     if (byToken != null) return byToken;
@@ -261,6 +266,13 @@ class MembershipService {
   }
 
   /// ضريبة الفاتورة حسب الإعدادات
+  /// ما سيدفعه العميل فعلاً لمبلغ قبل الضريبة (بنفس حساب الفاتورة): تُضاف الضريبة فقط إن كانت الأسعار غير شاملة لها
+  double totalWithTax(double taxable) {
+    final st = d.settings;
+    if (!st.taxEnabled || st.taxInclusive || st.taxRate <= 0) return roundMoney(taxable);
+    return roundMoney(taxable + roundMoney(taxable * (st.taxRate / 100)));
+  }
+
   Invoice newInvoice({String? memberId, String? customerName, required List<InvoiceItem> items, double discount = 0}) {
     final s = d.settings;
     return Invoice(
@@ -328,6 +340,8 @@ class MembershipService {
   SaleQuote quote(SaleRequest r) {
     final plan = d.plans[r.planId];
     if (plan == null) throw GymException(tr('الباقة غير موجودة'));
+    if (r.discount < 0 || r.discountPct < 0) throw GymException(tr('الخصم لا يكون سالباً'));
+    if (r.discountPct > 100) throw GymException(tr('نسبة الخصم لا تزيد عن 100%'));
     final fee = r.registrationFee ? plan.registrationFee : 0.0;
     final offer = offerOf(r, plan);
     final offerDiscount = offer == null ? 0.0 : roundMoney(offer.discountFor(plan.price));
@@ -339,7 +353,11 @@ class MembershipService {
       couponDiscount = roundMoney(c.discountFor(plan.price));
     }
     final extras = r.extraItems.fold(0.0, (s, i) => s + i.total);
-    final total = roundMoney(plan.price + fee + extras - couponDiscount - offerDiscount - manual);
+    final gross = roundMoney(plan.price + fee + extras);
+    final discounts = roundMoney(couponDiscount + offerDiscount + manual);
+    final taxable = roundMoney(gross - (discounts > gross ? gross : discounts));
+    // نفس حساب الفاتورة: الضريبة المضافة تُضاف فوق السعر، والشاملة داخله
+    final total = totalWithTax(taxable);
     return (
       price: plan.price,
       fee: fee,
@@ -347,7 +365,8 @@ class MembershipService {
       offerDiscount: offerDiscount,
       manualDiscount: manual,
       offer: offer,
-      total: total < 0 ? 0 : total,
+      tax: roundMoney(total - taxable),
+      total: total,
     );
   }
 
@@ -373,6 +392,8 @@ class MembershipService {
         throw GymException(tr('الخصم أعلى من المسموح ({p}%). يحتاج موافقة المدير', {'p': fmtNum(d.settings.maxDiscountPct)}));
       }
     }
+    if (r.payments.any((p) => p.amount < 0)) throw GymException(tr('المبلغ المدفوع لا يكون سالباً'));
+    if (r.installments.any((i) => i.amount <= 0)) throw GymException(tr('كل قسط يجب أن يكون أكبر من صفر'));
     final paidNow = r.payments.fold(0.0, (s, p) => s + p.amount);
     if (paidNow - q.total > 0.001) throw GymException(tr('المبلغ المدفوع أكبر من الإجمالي'));
     final scheduled = r.installments.fold(0.0, (s, i) => s + i.amount);
@@ -393,7 +414,7 @@ class MembershipService {
       end: end,
       visitsTotal: plan.visits,
       price: plan.price,
-      discount: roundMoney(totalDiscount),
+      discount: roundMoney(totalDiscount > plan.price + q.fee ? plan.price + q.fee : totalDiscount),
       freezeDaysAllowed: plan.freezeDays,
       freezeTimesAllowed: plan.freezeTimes,
       trainerId: r.trainerId,
@@ -411,7 +432,9 @@ class MembershipService {
       if (q.fee > 0) InvoiceItem(kind: ItemKind.registration, description: tr('رسوم التسجيل'), unitPrice: q.fee),
       ...r.extraItems,
     ];
-    final inv = newInvoice(memberId: member.id, items: items, discount: totalDiscount)
+    // مجموع الخصومات لا يتجاوز قيمة الفاتورة (فلا يصبح الإجمالي سالباً)
+    final gross = items.fold(0.0, (s, i) => s + i.total);
+    final inv = newInvoice(memberId: member.id, items: items, discount: roundMoney(totalDiscount > gross ? gross : totalDiscount))
       ..installments = List.of(r.installments)
       ..notes = r.notes;
     sub.invoiceId = inv.id;
@@ -596,6 +619,7 @@ class MembershipService {
   /// تعديل تاريخ نهاية الاشتراك يدوياً (تعويض، خطأ إدخال)
   Future<void> adjustEnd(Subscription s, DateTime newEnd, String reason) async {
     if (!d.can(Perm.override)) throw GymException(tr('يحتاج صلاحية المدير'));
+    if (dateOnly(newEnd).isBefore(s.start)) throw GymException(tr('تاريخ النهاية قبل بداية الاشتراك ({d})', {'d': dayKey(s.start)}));
     final old = s.end;
     s.end = dateOnly(newEnd);
     await d.putAll([s, d.auditEntry('adjust', '${d.members[s.memberId]?.name}: ${dayKey(old)} – ${dayKey(s.end)} — $reason')]);
@@ -603,8 +627,11 @@ class MembershipService {
 
   Future<void> adjustVisits(Subscription s, int used, String reason) async {
     if (!d.can(Perm.override)) throw GymException(tr('يحتاج صلاحية المدير'));
+    if (used < 0 || (s.visitsTotal != null && used > s.visitsTotal!)) {
+      throw GymException(tr('الحصص المستخدمة بين 0 و{t}', {'t': s.visitsTotal ?? 0}));
+    }
     final old = s.visitsUsed;
-    s.visitsUsed = used < 0 ? 0 : used;
+    s.visitsUsed = used;
     s.visitsAdjust = s.visitsUsed - d.countedVisits(s.id);
     await d.putAll([s, d.auditEntry('adjust', '${d.members[s.memberId]?.name}: $old – $used — $reason')]);
   }

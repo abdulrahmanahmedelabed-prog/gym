@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
+import '../../core/phone.dart';
 import '../../core/ids.dart';
 import '../../models/business.dart';
 import '../../models/member.dart';
@@ -216,7 +217,10 @@ class ClassFormScreen extends StatefulWidget {
 }
 
 class _ClassFormScreenState extends State<ClassFormScreen> {
-  late final GymClass c = context.gym.classes[widget.classId] ?? GymClass(id: newId(), name: '');
+  late final GymClass c = switch (context.gym.classes[widget.classId]) {
+    final GymClass ex => GymClass.fromMap(ex.toMap()),
+    null => GymClass(id: newId(), name: ''),
+  };
   late final _name = TextEditingController(text: c.name);
   late final _cap = TextEditingController(text: '${c.capacity}');
   late final _dur = TextEditingController(text: '${c.durationMin}');
@@ -245,11 +249,23 @@ class _ClassFormScreenState extends State<ClassFormScreen> {
           padding: const EdgeInsets.all(12),
           child: FilledButton(
             onPressed: () async {
-              if (_name.text.trim().isEmpty) return;
+              final cap = parseIntInput(_cap.text);
+              final dur = parseIntInput(_dur.text);
+              final e = _name.text.trim().isEmpty
+                  ? tr('اكتب اسم الحصة')
+                  : (cap == null || cap < 1)
+                      ? tr('السعة يجب أن تكون 1 أو أكثر')
+                      : (dur == null || dur < 5 || dur > 600)
+                          ? tr('مدة الحصة بين 5 و600 دقيقة')
+                          : null;
+              if (e != null) {
+                context.toast(e, error: true);
+                return;
+              }
               c
                 ..name = _name.text.trim()
-                ..capacity = int.tryParse(_cap.text) ?? 20
-                ..durationMin = int.tryParse(_dur.text) ?? 60
+                ..capacity = cap!
+                ..durationMin = dur!
                 ..room = _room.text.trim().isEmpty ? null : _room.text.trim();
               await g.put(c);
               if (context.mounted) Navigator.pop(context);

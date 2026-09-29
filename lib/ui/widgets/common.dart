@@ -94,12 +94,24 @@ Future<String?> askText(BuildContext context, String title,
   return r;
 }
 
-Future<DateTime?> pickDay(BuildContext context, DateTime initial, {DateTime? first, DateTime? last}) => showDatePicker(
-      context: context,
-      initialDate: initial,
-      firstDate: first ?? DateTime(2015),
-      lastDate: last ?? DateTime(2100),
-    );
+/// اختيار يوم. الافتراضي من 2000 إلى 2100، والتاريخ المبدئي يُحصر داخل المدى
+/// (وإلا يتعطل منتقي التاريخ). [yearFirst] يبدأ باختيار السنة (لتاريخ الميلاد).
+Future<DateTime?> pickDay(BuildContext context, DateTime initial, {DateTime? first, DateTime? last, bool yearFirst = false}) {
+  final f = first ?? DateTime(2000);
+  final l = last ?? DateTime(2100);
+  final init = initial.isBefore(f) ? f : (initial.isAfter(l) ? l : initial);
+  return showDatePicker(
+    context: context,
+    initialDate: init,
+    firstDate: f,
+    lastDate: l,
+    initialDatePickerMode: yearFirst ? DatePickerMode.year : DatePickerMode.day,
+  );
+}
+
+/// تاريخ الميلاد: من 1920 حتى اليوم، ويبدأ باختيار السنة
+Future<DateTime?> pickBirthDate(BuildContext context, DateTime? current, DateTime today) =>
+    pickDay(context, current ?? DateTime(today.year - 25, today.month, today.day), first: DateTime(1920), last: today, yearFirst: true);
 
 Future<TimeOfDay?> pickTime(BuildContext context, int minutes) =>
     showTimePicker(context: context, initialTime: TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60));

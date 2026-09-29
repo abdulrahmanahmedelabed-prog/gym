@@ -120,7 +120,11 @@ class CheckinService {
     if (g != null) {
       final windows = d.settings.genderWindows;
       final m0 = minutesOfDay(now);
-      bool covers(GenderWindow w) => (w.weekdays.isEmpty || w.weekdays.contains(now.weekday)) && m0 >= w.from && m0 <= w.to;
+      bool covers(GenderWindow w) {
+        if (w.weekdays.isNotEmpty && !w.weekdays.contains(now.weekday)) return false;
+        // نافذة تتجاوز منتصف الليل (مثل 20:00 – 01:00)
+        return w.from <= w.to ? (m0 >= w.from && m0 <= w.to) : (m0 >= w.from || m0 <= w.to);
+      }
       final otherActive = windows.where((w) => w.gender != g && covers(w)).toList();
       if (otherActive.isNotEmpty) {
         final w = otherActive.first;

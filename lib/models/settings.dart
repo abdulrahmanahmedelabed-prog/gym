@@ -198,7 +198,7 @@ class GymSettings {
   bool get taxEnabled => _get('taxEnabled', false);
   set taxEnabled(bool v) => set('taxEnabled', v);
   double get taxRate => _get('taxRate', 14.0); // بالنسبة المئوية
-  set taxRate(double v) => set('taxRate', v);
+  set taxRate(double v) => set('taxRate', v.clamp(0, 100).toDouble());
   bool get taxInclusive => _get('taxInclusive', true);
   set taxInclusive(bool v) => set('taxInclusive', v);
   String get taxNumber => _get('taxNumber', '');
@@ -212,21 +212,21 @@ class GymSettings {
   bool get receiptThermal => _get('receiptThermal', false);
   set receiptThermal(bool v) => set('receiptThermal', v);
   double get maxDiscountPct => _get('maxDiscountPct', 20.0); // أعلى خصم لموظف الاستقبال بدون إذن
-  set maxDiscountPct(double v) => set('maxDiscountPct', v);
+  set maxDiscountPct(double v) => set('maxDiscountPct', v.clamp(0, 100).toDouble());
 
   // --- الاشتراكات والدخول
   bool get renewFromEnd => _get('renewFromEnd', true);
   set renewFromEnd(bool v) => set('renewFromEnd', v);
   int get graceDays => _get('graceDays', 0); // أيام سماح بعد الانتهاء
-  set graceDays(int v) => set('graceDays', v);
+  set graceDays(int v) => set('graceDays', v.clamp(0, 365));
   bool get blockOnDebt => _get('blockOnDebt', false);
   set blockOnDebt(bool v) => set('blockOnDebt', v);
   double get debtLimit => _get('debtLimit', 0.0); // يمنع الدخول إذا زاد المتأخر عن هذا الحد
-  set debtLimit(double v) => set('debtLimit', v);
+  set debtLimit(double v) => set('debtLimit', v < 0 ? 0.0 : v);
   int get sessionMinutes => _get('sessionMinutes', 90); // متوسط مدة التمرين لحساب الموجودين الآن
-  set sessionMinutes(int v) => set('sessionMinutes', v);
+  set sessionMinutes(int v) => set('sessionMinutes', v.clamp(10, 600));
   int get referralRewardDays => _get('referralRewardDays', 7);
-  set referralRewardDays(int v) => set('referralRewardDays', v);
+  set referralRewardDays(int v) => set('referralRewardDays', v.clamp(0, 365));
   List<GenderWindow> get genderWindows =>
       asMapList(data['genderWindows']).map(GenderWindow.fromMap).toList();
   set genderWindows(List<GenderWindow> v) => set('genderWindows', v.map((w) => w.toMap()).toList());
@@ -259,7 +259,8 @@ class GymSettings {
     return v is List ? asIntList(v) : List.of(reminderDefaults[key]?.days ?? const []);
   }
 
-  void setReminderDays(String key, List<int> v) => set('rem_${key}_days', v);
+  /// أيام التذكير: بلا سالب ولا تكرار، مرتبة من الأكبر
+  void setReminderDays(String key, List<int> v) => set('rem_${key}_days', ({...v.where((x) => x >= 0 && x <= 365)}.toList()..sort((a, b) => b.compareTo(a))));
 
   String template(String key) {
     final custom = asStrOrNull(data['tpl_$key']);

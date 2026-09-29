@@ -27,7 +27,8 @@ class _ShopScreenState extends State<ShopScreen> {
   Member? _member;
   PayMethod _method = PayMethod.cash;
 
-  double get _total => _cart.values.fold(0.0, (s, l) => s + l.total);
+  /// الإجمالي كما في الفاتورة (مع الضريبة المضافة إن كانت الأسعار غير شاملة لها)
+  double get _total => context.services.members.totalWithTax(_cart.values.fold(0.0, (s, l) => s + l.total));
 
   void _add(Product p) {
     setState(() {
@@ -216,7 +217,7 @@ class ProductsScreen extends StatelessWidget {
 
   Future<void> _edit(BuildContext context, Product? p0) async {
     final g = context.gym;
-    final p = p0 ?? Product(id: newId(), name: '');
+    final p = p0 != null ? Product.fromMap(p0.toMap()) : Product(id: newId(), name: '');
     final f = {
       'name': TextEditingController(text: p.name),
       'price': TextEditingController(text: p.price == 0 ? '' : fmtNum(p.price)),
@@ -265,7 +266,12 @@ class ProductsScreen extends StatelessWidget {
         ),
       ),
     );
-    if (ok != true || f['name']!.text.trim().isEmpty) return;
+    if (ok != true || f['name']!.text.trim().isEmpty || !context.mounted) return;
+    final nums = [for (final k in ['price', 'cost', 'stock', 'min']) parseAmount(f[k]!.text) ?? 0];
+    if (nums.any((x) => x < 0)) {
+      context.toast(tr('السعر والتكلفة والكمية لا تكون سالبة'), error: true);
+      return;
+    }
     p
       ..name = f['name']!.text.trim()
       ..price = parseAmount(f['price']!.text) ?? 0

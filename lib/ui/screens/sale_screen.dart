@@ -323,6 +323,7 @@ class _SaleScreenState extends State<SaleScreen> {
                 if (q.couponDiscount > 0) InfoRow(tr('خصم الكوبون'), '- ${fmtMoney(q.couponDiscount)}', color: Colors.green),
                 if (q.offerDiscount > 0) InfoRow(q.offer!.name, '- ${fmtMoney(q.offerDiscount)}', color: Colors.green),
                 if (q.manualDiscount > 0) InfoRow(tr('الخصم'), '- ${fmtMoney(q.manualDiscount)}', color: Colors.green),
+                if (q.tax > 0) InfoRow(tr('ضريبة القيمة المضافة'), '+ ${fmtMoney(q.tax)}'),
                 if (g.settings.taxEnabled)
                   InfoRow(tr('الضريبة'), '${fmtNum(g.settings.taxRate)}% ${g.settings.taxInclusive ? tr('(شاملة)') : tr('(تضاف)')}'),
                 const Divider(height: 20),
@@ -371,7 +372,7 @@ class _SaleScreenState extends State<SaleScreen> {
                   title: Text(fmtDay(inst.due)),
                   trailing: Text(fmtMoney(inst.amount), style: const TextStyle(fontWeight: FontWeight.w700)),
                   onTap: () async {
-                    final d = await pickDay(context, inst.due);
+                    final d = await pickDay(context, inst.due, first: _start ?? context.gym.today);
                     if (d != null) setState(() => _customDue[i] = d);
                   },
                 ),

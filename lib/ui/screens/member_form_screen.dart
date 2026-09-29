@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
+import '../../core/phone.dart';
 import '../../models/member.dart';
 import '../../services/license.dart';
 import '../widgets/common.dart';
@@ -169,7 +170,7 @@ class _MemberFormScreenState extends State<MemberFormScreen> {
             keyboardType: TextInputType.phone,
             textInputAction: TextInputAction.next,
             decoration: InputDecoration(labelText: '${tr('الجوال (واتساب)')} *', prefixIcon: const Icon(Icons.phone_android)),
-            validator: (v) => (v ?? '').replaceAll(RegExp(r'\D'), '').length < 7 ? tr('رقم غير صحيح') : null,
+            validator: (v) => digitsOnly(v ?? '').length < 7 ? tr('رقم غير صحيح') : null,
           ),
           const SizedBox(height: 12),
           SegmentedButton<Gender?>(
@@ -184,7 +185,7 @@ class _MemberFormScreenState extends State<MemberFormScreen> {
           const SizedBox(height: 12),
           InkWell(
             onTap: () async {
-              final d = await pickDay(context, _m.birthDate ?? DateTime(1995), last: DateTime.now());
+              final d = await pickBirthDate(context, _m.birthDate, context.gym.today);
               if (d != null) setState(() => _m.birthDate = d);
             },
             child: InputDecorator(

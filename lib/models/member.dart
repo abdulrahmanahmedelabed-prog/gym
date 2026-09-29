@@ -83,8 +83,14 @@ class Member implements Entity {
     return age;
   }
 
-  bool isBirthday(DateTime day) =>
-      birthDate != null && birthDate!.month == day.month && birthDate!.day == day.day;
+  bool isBirthday(DateTime day) {
+    final b = birthDate;
+    if (b == null || b.month != day.month) return false;
+    if (b.day == day.day) return true;
+    // مواليد 29 فبراير: يُهنَّؤون في 28 فبراير في السنوات غير الكبيسة
+    final leap = DateTime(day.year, 2, 29).month == 2;
+    return b.month == 2 && b.day == 29 && day.day == 28 && !leap;
+  }
 
   @override
   Map<String, Object?> toMap() => compact({

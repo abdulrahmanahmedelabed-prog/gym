@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
+import '../../core/phone.dart';
 import '../../core/ids.dart';
 import '../../core/money.dart';
 import '../../models/business.dart';
@@ -225,7 +226,7 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> with _Aut
           value: s.renewFromEnd,
           onChanged: (v) => setState(() => s.renewFromEnd = v),
         ),
-        _Field(tr('أيام مجانية لمن يرشّح عضواً جديداً'), '${s.referralRewardDays}', (v) => s.referralRewardDays = int.tryParse(v) ?? 0, number: true),
+        _Field(tr('أيام مجانية لمن يرشّح عضواً جديداً'), '${s.referralRewardDays}', (v) => s.referralRewardDays = parseIntInput(v) ?? 0, number: true),
         _Field(tr('أعلى خصم يمنحه موظف الاستقبال (%)'), fmtNum(s.maxDiscountPct), (v) => s.maxDiscountPct = parseAmount(v) ?? 0, number: true),
         const SizedBox(height: 32),
       ]),
@@ -325,7 +326,7 @@ class _AccessSettingsScreenState extends State<AccessSettingsScreen> with _AutoS
             onChanged: (v) => setState(() => s.set('genderStrict', v)),
           ),
         _Head(tr('الانتهاء والديون')),
-        _Field(tr('أيام سماح بعد انتهاء الاشتراك'), '${s.graceDays}', (v) => s.graceDays = int.tryParse(v) ?? 0, number: true),
+        _Field(tr('أيام سماح بعد انتهاء الاشتراك'), '${s.graceDays}', (v) => s.graceDays = parseIntInput(v) ?? 0, number: true),
         SwitchListTile(
           title: Text(tr('منع الدخول عند وجود مبلغ متأخر')),
           subtitle: Text(tr('وإلا يظهر تنبيه فقط')),
@@ -333,7 +334,7 @@ class _AccessSettingsScreenState extends State<AccessSettingsScreen> with _AutoS
           onChanged: (v) => setState(() => s.blockOnDebt = v),
         ),
         if (s.blockOnDebt) _Field(tr('يُسمح بمتأخرات حتى'), fmtNum(s.debtLimit), (v) => s.debtLimit = parseAmount(v) ?? 0, number: true),
-        _Field(tr('متوسط مدة التمرين بالدقائق (لعدّ الموجودين الآن)'), '${s.sessionMinutes}', (v) => s.sessionMinutes = int.tryParse(v) ?? 90, number: true),
+        _Field(tr('متوسط مدة التمرين بالدقائق (لعدّ الموجودين الآن)'), '${s.sessionMinutes}', (v) => s.sessionMinutes = parseIntInput(v) ?? 90, number: true),
       ]),
     );
   }
@@ -576,7 +577,7 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen> {
     final g = context.gym;
     g.settings.setTemplate(widget.kind, _text.text.trim());
     if (_hasDays) {
-      g.settings.setReminderDays(widget.kind, _days.text.split(RegExp(r'[,،\s]+')).map((x) => int.tryParse(x)).whereType<int>().toList());
+      g.settings.setReminderDays(widget.kind, _days.text.split(RegExp(r'[,،\s]+')).map((x) => parseIntInput(x)).whereType<int>().toList());
     }
     await g.saveSettings();
     if (mounted) Navigator.pop(context);
@@ -867,10 +868,11 @@ class CouponsScreen extends StatelessWidget {
 
   Future<void> _edit(BuildContext context, Coupon? c0) async {
     final g = context.gym;
-    final c = c0 ?? Coupon(id: newId(), code: '', value: 10);
+    final c = c0 != null ? Coupon.fromMap(c0.toMap()) : Coupon(id: newId(), code: '', value: 10);
     final code = TextEditingController(text: c.code);
     final value = TextEditingController(text: fmtNum(c.value));
     final max = TextEditingController(text: c.maxUses == 0 ? '' : '${c.maxUses}');
+    String? err;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -895,14 +897,38 @@ class CouponsScreen extends StatelessWidget {
               title: Text(tr('صالح حتى')),
               trailing: Text(c.validUntil == null ? tr('دائماً') : dayKey(c.validUntil!)),
               onTap: () async {
-                final d = await pickDay(ctx, c.validUntil ?? addDays(g.today, 30));
-                set(() => c.validUntil = d);
+                final d = await pickDay(ctx, c.validUntil ?? addDays(g.today, 30), first: g.today);
+                if (d != null) set(() => c.validUntil = d);
               },
             ),
+            if (err != null) Text(err!, style: TextStyle(color: Theme.of(ctx).colorScheme.error, fontWeight: FontWeight.w700)),
           ]),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('إلغاء'))),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('حفظ'))),
+            FilledButton(
+              onPressed: () {
+                final k = code.text.trim().toUpperCase();
+                final v = parseAmount(value.text) ?? 0;
+                final m = parseIntInput(max.text);
+                final e = k.isEmpty
+                    ? tr('اكتب رمز الكوبون')
+                    : g.coupons.all.any((x) => x.id != c.id && x.code.toUpperCase() == k)
+                        ? tr('هذا الرمز مستخدم لكوبون آخر')
+                        : v <= 0
+                            ? tr('اكتب قيمة الخصم')
+                            : (c.percent && v > 100)
+                                ? tr('النسبة لا تزيد عن 100%')
+                                : (max.text.trim().isNotEmpty && (m == null || m < 0))
+                                    ? tr('عدد الاستخدامات غير صحيح')
+                                    : null;
+                if (e != null) {
+                  set(() => err = e);
+                  return;
+                }
+                Navigator.pop(ctx, true);
+              },
+              child: Text(tr('حفظ')),
+            ),
           ],
         ),
       ),
@@ -911,7 +937,7 @@ class CouponsScreen extends StatelessWidget {
     c
       ..code = code.text.trim().toUpperCase()
       ..value = parseAmount(value.text) ?? 0
-      ..maxUses = int.tryParse(max.text) ?? 0;
+      ..maxUses = parseIntInput(max.text) ?? 0;
     await g.put(c);
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
+import '../../core/phone.dart';
 import '../../core/ids.dart';
 import '../../core/money.dart';
 import '../../models/business.dart';
@@ -90,7 +91,8 @@ class _PlanFormScreenState extends State<PlanFormScreen> {
     final g = context.gym;
     final ex = g.plans[widget.planId];
     isNew = ex == null;
-    p = ex ?? Plan(id: newId(), name: '', sort: g.plans.items.length + 1, colorValue: planColors[g.plans.items.length % planColors.length]);
+    // نعدّل نسخة: الخروج بدون حفظ لا يغيّر الباقة الأصلية
+    p = ex != null ? Plan.fromMap(ex.toMap()) : Plan(id: newId(), name: '', sort: g.plans.items.length + 1, colorValue: planColors[g.plans.items.length % planColors.length]);
     _name.text = p.name;
     _price.text = p.price == 0 ? '' : fmtNum(p.price);
     _fee.text = p.registrationFee == 0 ? '' : fmtNum(p.registrationFee);
@@ -106,16 +108,39 @@ class _PlanFormScreenState extends State<PlanFormScreen> {
       context.toast(tr('اكتب اسم الباقة'), error: true);
       return;
     }
+    // التحقق قبل الحفظ: أرقام منطقية فقط
+    final price = parseAmount(_price.text) ?? 0;
+    final fee = parseAmount(_fee.text) ?? 0;
+    final dur = parseIntInput(_dur.text);
+    final visits = parseIntInput(_visits.text);
+    final fDays = parseIntInput(_freezeDays.text) ?? 0;
+    final fTimes = parseIntInput(_freezeTimes.text) ?? 0;
+    String? err;
+    if (price < 0 || fee < 0) {
+      err = tr('السعر والرسوم لا تكون سالبة');
+    } else if (dur == null || dur < 1) {
+      err = tr('مدة الباقة يجب أن تكون 1 أو أكثر');
+    } else if (_visits.text.trim().isNotEmpty && (visits == null || visits < 1)) {
+      err = tr('عدد الحصص يجب أن يكون 1 أو أكثر');
+    } else if (fDays < 0 || fTimes < 0) {
+      err = tr('أيام ومرات التجميد لا تكون سالبة');
+    } else if (p.hasTimeWindow && p.accessFrom == p.accessTo) {
+      err = tr('وقت البداية والنهاية متساويان');
+    }
+    if (err != null) {
+      context.toast(err, error: true);
+      return;
+    }
     final g = context.gym;
     final oldPrice = p.price;
     p
       ..name = _name.text.trim()
-      ..price = parseAmount(_price.text) ?? 0
-      ..registrationFee = parseAmount(_fee.text) ?? 0
-      ..durationValue = int.tryParse(_dur.text) ?? 1
-      ..visits = int.tryParse(_visits.text)
-      ..freezeDays = int.tryParse(_freezeDays.text) ?? 0
-      ..freezeTimes = int.tryParse(_freezeTimes.text) ?? 0
+      ..price = price
+      ..registrationFee = fee
+      ..durationValue = dur!
+      ..visits = visits
+      ..freezeDays = fDays
+      ..freezeTimes = fTimes
       ..description = _desc.text.trim().isEmpty ? null : _desc.text.trim();
     if (p.kind == PlanKind.visits && p.visits == null) p.visits = 12;
     if (p.kind == PlanKind.pt && p.visits == null) p.visits = 8;

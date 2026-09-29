@@ -1,5 +1,7 @@
 import 'package:intl/intl.dart';
 
+import 'phone.dart';
+
 /// العملة وعدد الخانات العشرية تُضبط من الإعدادات عند التشغيل.
 class Money {
   static String symbol = 'ج.م';
@@ -41,11 +43,7 @@ String fmtNum(num v) => NumberFormat('#,##0.##', 'en').format(v);
 /// قراءة رقم أدخله المستخدم (يقبل الأرقام العربية والفاصلة العربية)
 double? parseAmount(String? s) {
   if (s == null) return null;
-  var t = s.trim();
-  const ar = '٠١٢٣٤٥٦٧٨٩';
-  for (var i = 0; i < 10; i++) {
-    t = t.replaceAll(ar[i], '$i');
-  }
+  var t = normalizeDigits(s.trim());
   t = t.replaceAll('٫', '.').replaceAll('،', '').replaceAll(',', '');
   if (t.isEmpty) return null;
   return double.tryParse(t);
