@@ -100,6 +100,20 @@ void main() {
     expect(t.takeException(), isNull);
   });
 
+  testWidgets('شاشة الإعداد الأولى على جوال قديم (360×592): زر التجربة يُوصل إليه بالتمرير', (t) async {
+    t.view.physicalSize = const Size(720, 1184);
+    t.view.devicePixelRatio = 2.0;
+    addTearDown(t.view.reset);
+    final (g, _) = (await t.runAsync(() => newGym()))!;
+    await t.pumpWidget(GymApp(gym: g, startBackground: false));
+    await pumpFor(t, 500);
+    final demo = find.text('جرّب ببيانات نادٍ تجريبي');
+    await t.scrollUntilVisible(demo, 250, scrollable: find.byType(Scrollable).first);
+    expect(demo.hitTestable(), findsOneWidget);
+    expect(find.text('ناديك مسجّل على جهاز آخر؟ اربط هذا الجهاز'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
+
   testWidgets('شاشة الإعداد الأولى', (t) async {
     t.view.physicalSize = const Size(412 * 2.6, 915 * 2.6);
     t.view.devicePixelRatio = 2.6;

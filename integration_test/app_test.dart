@@ -29,19 +29,14 @@ void main() {
     await pumpFor(t, 500);
 
     // أول تشغيل: شاشة الإعداد. على الجوالات القديمة البطيئة قد يتأخر أول رسم، فننتظر أياً من الشاشتين
+    final welcome = find.text('أهلاً بك في نادي جيم');
     final demo = find.text('جرّب ببيانات نادٍ تجريبي');
-    try {
-      await waitFor(t, find.byWidgetPredicate((w) => w is Text && (w.data == 'جرّب ببيانات نادٍ تجريبي' || w.data == 'الرئيسية')), seconds: 120);
-    } catch (_) {
-      // تشخيص: ماذا يظهر على الشاشة فعلاً؟
-      final texts = find.byType(Text).evaluate().map((e) => (e.widget as Text).data ?? '<rich>').take(40).toList();
-      debugPrint('DIAG texts(${texts.length}): $texts');
-      debugPrint('DIAG widgets: ${find.byType(Widget).evaluate().length}, errors: ${find.byType(ErrorWidget).evaluate().length}, '
-          'scaffolds: ${find.byType(Scaffold).evaluate().length}, exception: ${t.takeException()}');
-      rethrow;
-    }
-    if (demo.evaluate().isNotEmpty) {
+    await waitFor(t, find.byWidgetPredicate((w) => w is Text && (w.data == 'أهلاً بك في نادي جيم' || w.data == 'الرئيسية')), seconds: 120);
+    if (welcome.evaluate().isNotEmpty) {
       await shot('00_onboarding');
+      // الشاشة الصغيرة (جوال قديم): الزر في أسفل القائمة فننزل إليه
+      await t.scrollUntilVisible(demo, 250, scrollable: find.byType(Scrollable).first);
+      await pumpFor(t, 300);
       await t.tap(demo);
       await waitFor(t, navItem('الرئيسية'), seconds: 180);
     }
