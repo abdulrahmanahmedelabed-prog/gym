@@ -40,6 +40,17 @@ class Reports {
   /// المبالغ المحصّلة (نقدية فعلية) بعد الاستردادات
   double collected(Range r) => roundMoney(paymentsIn(r).fold(0.0, (s, p) => s + p.amount));
 
+  /// التحصيل حسب الحساب/المحفظة (للمطابقة مع كشف كل حساب)
+  Map<String, ({double total, int count, int unverified})> collectedByAccount(Range r) {
+    final m = <String, ({double total, int count, int unverified})>{};
+    for (final p in paymentsIn(r)) {
+      final k = p.account ?? payMethodName(p.method);
+      final x = m[k] ?? (total: 0.0, count: 0, unverified: 0);
+      m[k] = (total: roundMoney(x.total + p.amount), count: x.count + 1, unverified: x.unverified + (p.needsCheck ? 1 : 0));
+    }
+    return m;
+  }
+
   Map<PayMethod, double> collectedByMethod(Range r) {
     final m = <PayMethod, double>{};
     for (final p in paymentsIn(r)) {

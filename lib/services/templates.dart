@@ -88,6 +88,6 @@ class TemplateContext {
           .replaceAll('{amount}', inv == null ? '' : roundMoney(inv.balance).toString())
           .replaceAll('{invoice}', inv?.number ?? '');
     }
-    return s.walletInfo;
+    return s.paymentInstructions;
   }
 }

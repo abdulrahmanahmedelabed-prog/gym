@@ -26,7 +26,9 @@ class PayInput {
   final double amount;
   final PayMethod method;
   final String? reference;
-  const PayInput(this.amount, this.method, [this.reference]);
+  final String? account; // المحفظة/الحساب المستلم
+  final bool verified;
+  const PayInput(this.amount, this.method, [this.reference, this.account, this.verified = true]);
 }
 
 /// طلب بيع/تجديد اشتراك
@@ -35,6 +37,9 @@ class SaleRequest {
   final String planId;
   final DateTime? start;
   final double discount; // خصم يدوي بالمبلغ
+  final double discountPct; // خصم يدوي بالنسبة المئوية من سعر الباقة
+  final bool useOffer; // تطبيق أفضل عرض ساري تلقائياً
+  final String? offerId; // عرض محدد بدل الأفضل
   final String? couponCode;
   final bool registrationFee;
   final String? trainerId;
@@ -48,6 +53,9 @@ class SaleRequest {
     required this.planId,
     this.start,
     this.discount = 0,
+    this.discountPct = 0,
+    this.useOffer = true,
+    this.offerId,
     this.couponCode,
     this.registrationFee = false,
     this.trainerId,
@@ -57,6 +65,8 @@ class SaleRequest {
     this.extraItems = const [],
   });
 }
+
+typedef SaleQuote = ({double price, double fee, double couponDiscount, double offerDiscount, double manualDiscount, Offer? offer, double total});
 
 class SaleResult {
   final Subscription subscription;
@@ -278,13 +288,50 @@ class MembershipService {
         reference: p.reference,
         note: note,
         by: d.userName,
+        account: p.account,
+        verified: p.verified || p.amount < 0 || p.method == PayMethod.cash || p.method == PayMethod.card,
+        verifiedAt: p.verified ? d.now() : null,
       );
 
+  /// العروض السارية على باقة لهذا العضو اليوم
+  List<Offer> offersFor(Plan plan, String memberId, [DateTime? day]) {
+    if (!d.has(Feature.offers)) return const [];
+    final isNew = isNewMember(memberId);
+    return d.offers.all.where((o) => o.validOn(day ?? d.today, plan.id, newMember: isNew)).toList();
+  }
+
+  /// أفضل عرض للعضو: الأكبر خصماً، ثم الأكثر أياماً مجانية
+  Offer? bestOffer(Plan plan, String memberId) {
+    Offer? best;
+    for (final o in offersFor(plan, memberId)) {
+      if (best == null) {
+        best = o;
+        continue;
+      }
+      final a = o.discountFor(plan.price), b = best.discountFor(plan.price);
+      if (a > b + 0.001 || ((a - b).abs() <= 0.001 && o.bonusDays > best.bonusDays)) best = o;
+    }
+    return best;
+  }
+
+  Offer? offerOf(SaleRequest r, Plan plan) {
+    if (!r.useOffer) return null;
+    if (r.offerId != null) {
+      final o = d.offers[r.offerId];
+      if (o != null && offersFor(plan, r.memberId).contains(o)) return o;
+      return null;
+    }
+    return bestOffer(plan, r.memberId);
+  }
+
   /// حساب سعر البيع قبل التنفيذ (لعرضه في شاشة البيع)
-  ({double price, double fee, double couponDiscount, double total}) quote(SaleRequest r) {
+  SaleQuote quote(SaleRequest r) {
     final plan = d.plans[r.planId];
     if (plan == null) throw GymException(tr('الباقة غير موجودة'));
     final fee = r.registrationFee ? plan.registrationFee : 0.0;
+    final offer = offerOf(r, plan);
+    final offerDiscount = offer == null ? 0.0 : roundMoney(offer.discountFor(plan.price));
+    final manual = roundMoney(r.discount + plan.price * r.discountPct / 100);
     var couponDiscount = 0.0;
     if (r.couponCode != null && r.couponCode!.trim().isNotEmpty) {
       final c = findCoupon(r.couponCode!);
@@ -292,8 +339,16 @@ class MembershipService {
       couponDiscount = roundMoney(c.discountFor(plan.price));
     }
     final extras = r.extraItems.fold(0.0, (s, i) => s + i.total);
-    final total = roundMoney(plan.price + fee + extras - couponDiscount - r.discount);
-    return (price: plan.price, fee: fee, couponDiscount: couponDiscount, total: total < 0 ? 0 : total);
+    final total = roundMoney(plan.price + fee + extras - couponDiscount - offerDiscount - manual);
+    return (
+      price: plan.price,
+      fee: fee,
+      couponDiscount: couponDiscount,
+      offerDiscount: offerDiscount,
+      manualDiscount: manual,
+      offer: offer,
+      total: total < 0 ? 0 : total,
+    );
   }
 
   /// بيع أو تجديد اشتراك: اشتراك + فاتورة + دفعات + أقساط في عملية واحدة
@@ -311,9 +366,9 @@ class MembershipService {
     _checkMemberLimit(member.id);
     if (plan.kind == PlanKind.pt && r.trainerId == null) throw GymException(tr('اختر المدرب للتدريب الشخصي'));
     final q = quote(r);
-    final totalDiscount = r.discount + q.couponDiscount;
-    if (r.discount > 0 && !d.can(Perm.discount)) {
-      final pct = (plan.price + q.fee) <= 0 ? 0 : r.discount / (plan.price + q.fee) * 100;
+    final totalDiscount = q.manualDiscount + q.couponDiscount + q.offerDiscount;
+    if (q.manualDiscount > 0 && !d.can(Perm.discount)) {
+      final pct = (plan.price + q.fee) <= 0 ? 0 : q.manualDiscount / (plan.price + q.fee) * 100;
       if (pct > d.settings.maxDiscountPct + 0.001) {
         throw GymException(tr('الخصم أعلى من المسموح ({p}%). يحتاج موافقة المدير', {'p': fmtNum(d.settings.maxDiscountPct)}));
       }
@@ -326,7 +381,8 @@ class MembershipService {
     }
 
     final start = dateOnly(r.start ?? (plan.kind == PlanKind.pt ? d.today : suggestedStart(member.id)));
-    final end = periodEnd(start, plan.durationValue, plan.durationUnit);
+    final bonus = q.offer?.bonusDays ?? 0;
+    final end = addDays(periodEnd(start, plan.durationValue, plan.durationUnit), bonus);
     final sub = Subscription(
       id: newId(),
       memberId: member.id,
@@ -349,7 +405,7 @@ class MembershipService {
       InvoiceItem(
         kind: plan.kind == PlanKind.pt ? ItemKind.pt : ItemKind.subscription,
         refId: sub.id,
-        description: '${plan.name} (${dayKey(start)} – ${dayKey(end)})',
+        description: '${plan.name} (${dayKey(start)} – ${dayKey(end)})${q.offer == null ? '' : ' — ${q.offer!.name}'}',
         unitPrice: plan.price,
       ),
       if (q.fee > 0) InvoiceItem(kind: ItemKind.registration, description: tr('رسوم التسجيل'), unitPrice: q.fee),
@@ -378,12 +434,80 @@ class MembershipService {
         toSave.add(d.auditEntry('referral', '${member.name} › +${d.settings.referralRewardDays}'));
       }
     }
-    if (r.discount > 0) {
-      toSave.add(d.auditEntry('discount', '${inv.number}: ${fmtMoney(r.discount)} (${member.name})'));
+    if (q.manualDiscount > 0) {
+      toSave.add(d.auditEntry('discount', '${inv.number}: ${fmtMoney(q.manualDiscount)} (${member.name})'));
     }
     await d.putAll(toSave);
     return SaleResult(sub, inv, pays);
   }
+
+  // ---------------------------------------------------------------------------
+  // التجديد شبه التلقائي: فاتورة تجديد تتحول لاشتراك عند اكتمال دفعها
+  // ---------------------------------------------------------------------------
+
+  Invoice? openRenewalInvoice(String memberId) {
+    for (final inv in d.invoicesOf(memberId)) {
+      if (inv.pendingPlanId != null && !inv.voided && inv.balance > 0) return inv;
+    }
+    return null;
+  }
+
+  /// فاتورة تجديد بسعر الباقة (مع العرض الساري إن وجد)؛ لا تُنشأ مرتين
+  Future<Invoice> createRenewalInvoice(Member m, Plan plan) async {
+    d.require(Feature.autoRenew);
+    final existing = openRenewalInvoice(m.id);
+    if (existing != null) return existing;
+    _checkMemberLimit(m.id);
+    final q = quote(SaleRequest(memberId: m.id, planId: plan.id));
+    final start = suggestedStart(m.id);
+    final end = periodEnd(start, plan.durationValue, plan.durationUnit);
+    final inv = newInvoice(memberId: m.id, discount: roundMoney(q.offerDiscount), items: [
+      InvoiceItem(
+        kind: plan.kind == PlanKind.pt ? ItemKind.pt : ItemKind.subscription,
+        description: '${plan.name} — ${tr('تجديد')} (${dayKey(start)} – ${dayKey(end)})',
+        unitPrice: plan.price,
+      ),
+    ])
+      ..pendingPlanId = plan.id
+      ..notes = tr('فاتورة تجديد: يتجدد الاشتراك تلقائياً عند اكتمال الدفع');
+    await d.putAll([inv]);
+    return inv;
+  }
+
+  /// عند اكتمال دفع فاتورة تجديد: إنشاء الاشتراك وربطه بها
+  Future<Subscription?> completePendingSale(Invoice inv) async {
+    final planId = inv.pendingPlanId;
+    if (planId == null || inv.voided || inv.balance > 0.001 || inv.memberId == null) return null;
+    final plan = d.plans[planId];
+    final member = d.members[inv.memberId];
+    if (plan == null || member == null) return null;
+    final start = suggestedStart(member.id);
+    final item = inv.items.first;
+    final sub = Subscription(
+      id: newId(),
+      memberId: member.id,
+      planId: plan.id,
+      planName: plan.name,
+      kind: plan.kind,
+      start: start,
+      end: addDays(periodEnd(start, plan.durationValue, plan.durationUnit), bonusDaysFor(plan, member.id)),
+      visitsTotal: plan.visits,
+      price: plan.price,
+      discount: inv.discount,
+      freezeDaysAllowed: plan.freezeDays,
+      freezeTimesAllowed: plan.freezeTimes,
+      invoiceId: inv.id,
+      createdAt: d.now(),
+      createdBy: d.userName,
+    );
+    item.refId = sub.id;
+    inv.pendingPlanId = null;
+    await d.putAll([sub, inv, d.auditEntry('auto_renew', '${member.name}: ${plan.name} ${dayKey(start)}')]);
+    return sub;
+  }
+
+  /// أيام إضافية مجانية من العرض الساري
+  int bonusDaysFor(Plan plan, String memberId) => bestOffer(plan, memberId)?.bonusDays ?? 0;
 
   // ---------------------------------------------------------------------------
   // التجميد

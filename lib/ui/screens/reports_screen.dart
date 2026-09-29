@@ -52,6 +52,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final collected = rep.collected(r);
     final expenses = rep.expenses(r);
     final byMethod = rep.collectedByMethod(r);
+    final byAccount = rep.collectedByAccount(r);
+    final maxAcc = byAccount.values.fold(0.0, (a, b) => b.total > a ? b.total : a);
     final byKind = rep.salesByKind(r);
     final expCat = rep.expensesByCategory(r);
     final sold = rep.subsSold(r);
@@ -161,6 +163,23 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 child: Column(children: [
                   for (final e in byMethod.entries.toList()..sort((a, b) => b.value.compareTo(a.value)))
                     ShareBar(label: payMethodName(e.key), value: fmtMoney(e.value), fraction: maxMethod == 0 ? 0 : e.value / maxMethod),
+                ]),
+              ),
+            ),
+          ),
+        if (byAccount.length > 1)
+          Section(
+            title: tr('حسب الحساب / المحفظة'),
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(children: [
+                  for (final e in byAccount.entries.toList()..sort((a, b) => b.value.total.compareTo(a.value.total)))
+                    ShareBar(
+                      label: '${e.key} (${e.value.count})${e.value.unverified > 0 ? ' • ${tr('{n} بانتظار التأكد', {'n': e.value.unverified})}' : ''}',
+                      value: fmtMoney(e.value.total),
+                      fraction: maxAcc == 0 ? 0 : e.value.total / maxAcc,
+                    ),
                 ]),
               ),
             ),

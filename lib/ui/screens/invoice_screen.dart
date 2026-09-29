@@ -13,6 +13,7 @@ import '../../services/license.dart';
 import '../widgets/upgrade.dart';
 import '../widgets/common.dart';
 import '../widgets/dialogs.dart';
+import '../widgets/pay_widgets.dart';
 import 'member_detail_screen.dart';
 
 class InvoiceScreen extends StatelessWidget {
@@ -92,6 +93,18 @@ class InvoiceScreen extends StatelessWidget {
               ),
             ),
       body: ListView(padding: const EdgeInsets.all(16), children: [
+        if (inv.pendingPlanId != null && !inv.voided)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Card(
+              color: StatusColors.frozen.withValues(alpha: 0.08),
+              child: ListTile(
+                leading: const Icon(Icons.autorenew, color: StatusColors.frozen),
+                title: Text(tr('فاتورة تجديد'), style: const TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: Text(tr('يتجدد الاشتراك تلقائياً عند اكتمال الدفع')),
+              ),
+            ),
+          ),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -172,7 +185,10 @@ class InvoiceScreen extends StatelessWidget {
                 ListTile(
                   dense: true,
                   leading: Icon(p.isRefund ? Icons.undo : Icons.south_east, color: p.isRefund ? StatusColors.expired : StatusColors.active),
-                  title: Text('${payMethodName(p.method)}${p.reference == null ? '' : ' • ${p.reference}'}'),
+                  title: Row(children: [
+                    Flexible(child: Text('${p.account ?? payMethodName(p.method)}${p.reference == null ? '' : ' • ${p.reference}'}')),
+                    if (p.needsCheck) ...[const SizedBox(width: 6), Pill(tr('بانتظار التأكد'), StatusColors.expiring)],
+                  ]),
                   subtitle: Text([p.number, dayKey(p.date), if (p.by != null) p.by!, if (p.note != null) p.note!].join(' • ')),
                   trailing: Text(fmtMoney(p.amount), style: const TextStyle(fontWeight: FontWeight.w800)),
                 ),
@@ -203,8 +219,20 @@ class InvoiceScreen extends StatelessWidget {
       ('wa', tr('رسالة واتساب (نص الفاتورة)'), Icons.chat),
       ('sms', tr('رسالة SMS'), Icons.sms_outlined),
       ('pdf', tr('ملف PDF (اختر واتساب من قائمة المشاركة)'), Icons.picture_as_pdf_outlined),
+      if (inv.balance > 0 && context.gym.has(Feature.walletQr) && context.gym.settings.activeAccounts.any((a) => a.qr.isNotEmpty))
+        ('qr', tr('طلب دفع: صورة رمز QR + المبلغ'), Icons.qr_code_2),
     ]);
     if (v == null || !context.mounted) return;
+    if (v == 'qr') {
+      final acc = context.gym.settings.activeAccounts.firstWhere((a) => a.qr.isNotEmpty);
+      await runAction(context, () async {
+        final png = await payQrPng(acc, amount: inv.balance, title: context.gym.settings.gymName);
+        final text = tr('مرحباً {n}، المطلوب {a} (فاتورة {i}). امسح الرمز من تطبيق البنك أو المحفظة، ثم أرسل لنا رقم العملية. شكراً 🙏',
+            {'n': m.firstName, 'a': fmtMoney(inv.balance), 'i': inv.number});
+        await sv.shareFile(png, 'pay-${inv.number}.png', 'image/png', text: text);
+      });
+      return;
+    }
     if (v == 'pdf') {
       if (!await ensureFeature(context, Feature.pdfPrint) || !context.mounted) return;
       await runAction(context, () => sv.shareInvoicePdf(inv));

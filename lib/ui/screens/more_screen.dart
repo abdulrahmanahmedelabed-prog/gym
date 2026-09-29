@@ -12,6 +12,7 @@ import 'kiosk_screen.dart';
 import 'leads_screen.dart';
 import 'lock_screen.dart';
 import 'messages_screen.dart';
+import 'offers_screen.dart';
 import 'plans_screen.dart';
 import 'reports_screen.dart';
 import 'settings_screen.dart';
@@ -28,6 +29,7 @@ class MoreScreen extends StatelessWidget {
     final items = <(IconData, String, Color, Widget, bool, String?, Feature?)>[
       (Icons.chat_outlined, tr('الرسائل والتذكيرات'), const Color(0xFF16A34A), const MessagesScreen(), g.can(Perm.messages), pending > 0 ? '$pending' : null, null),
       (Icons.card_membership, tr('الباقات والأسعار'), const Color(0xFF2563EB), const PlansScreen(), true, null, null),
+      (Icons.local_fire_department_outlined, tr('العروض والكوبونات'), const Color(0xFFEA580C), const OffersScreen(), g.can(Perm.plans), null, Feature.offers),
       (Icons.event_note, tr('الحصص والحجوزات'), const Color(0xFFEA580C), const ClassesScreen(), g.can(Perm.classes), null, Feature.classes),
       (Icons.person_search_outlined, tr('العملاء المحتملون'), const Color(0xFFDB2777), const LeadsScreen(), g.can(Perm.members), null, Feature.leads),
       (Icons.shopping_bag_outlined, tr('المتجر والمخزون'), const Color(0xFFD97706), const ShopScreen(), g.can(Perm.sell), null, Feature.shop),

@@ -21,6 +21,7 @@ import 'license_screen.dart';
 import '../widgets/common.dart';
 import 'messages_screen.dart';
 import 'onboarding_screen.dart';
+import 'pay_accounts_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -56,7 +57,7 @@ class SettingsScreen extends StatelessWidget {
         tile(Icons.door_front_door_outlined, tr('قواعد الدخول'), tr('ساعات السيدات، فترة السماح، الديون'), const AccessSettingsScreen(), enabled: canSet),
         tile(Icons.chat_outlined, tr('الرسائل والتذكيرات'), tr('واتساب، SMS، القوالب، مواعيد التذكير'), const MessagingSettingsScreen(), enabled: canSet),
         tile(Icons.credit_card, tr('الدفع الإلكتروني'), tr('روابط الدفع، المحافظ، البوابات'), const PaymentSettingsScreen(), enabled: canSet),
-        tile(Icons.local_offer_outlined, tr('كوبونات الخصم'), tr('عروض ومواسم وخصومات'), const CouponsScreen(), enabled: g.can(Perm.plans)),
+        tile(Icons.local_offer_outlined, tr('كوبونات الخصم'), tr('عروض ومواسم وخصومات'), const CouponsScreen(), enabled: g.can(Perm.plans) && g.has(Feature.offers)),
         tile(Icons.lock_outline, tr('الأمان'), tr('الرقم السري للموظفين'), const SecuritySettingsScreen(), enabled: canSet),
         tile(Icons.storage_outlined, tr('البيانات'), tr('نسخ احتياطي، استرجاع، استيراد من Excel'), const DataSettingsScreen(), enabled: canSet || g.can(Perm.reports)),
         const Divider(),
@@ -644,9 +645,21 @@ class _PaymentSettingsScreenState extends State<PaymentSettingsScreen> with _Aut
     return Scaffold(
       appBar: AppBar(title: Text(tr('الدفع الإلكتروني'))),
       body: ListView(padding: const EdgeInsets.only(bottom: 32), children: [
+        Card(
+          margin: const EdgeInsets.all(12),
+          child: ListTile(
+            leading: const Icon(Icons.qr_code_2, size: 32),
+            title: Text(tr('حسابات الاستلام ورمز QR الموحد'), style: const TextStyle(fontWeight: FontWeight.w700)),
+            subtitle: Text(tr('جوال باي، بال باي، البنوك، iBuraq — {n} حساب', {'n': s.payAccounts.length})),
+            trailing: lockFor(context, Feature.walletQr) ?? const Icon(Icons.chevron_right),
+            onTap: () async {
+              if (await ensureFeature(context, Feature.walletQr) && context.mounted) context.push(const PayAccountsScreen());
+            },
+          ),
+        ),
         _Head(tr('بيانات التحويل (تظهر في رسائل التذكير)')),
-        _Field(tr('انستاباي / فودافون كاش / STC Pay / IBAN'), s.walletInfo, (v) => s.walletInfo = v, maxLines: 3,
-            hint: tr('للدفع: انستاباي gym@instapay أو فودافون كاش 010...')),
+        _Field(tr('نص بيانات الدفع (اختياري)'), s.walletInfo, (v) => s.walletInfo = v, maxLines: 3,
+            hint: tr('فارغ = يُكتب تلقائياً من حسابات الاستلام')),
         _Head(tr('بوابة الدفع')),
         RadioGroup<String>(
           groupValue: s.payProvider,

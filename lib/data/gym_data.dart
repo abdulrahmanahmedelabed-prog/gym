@@ -49,11 +49,13 @@ class GymData extends ChangeNotifier {
   final products = Coll<Product>('products', Product.fromMap);
   final expenses = Coll<Expense>('expenses', Expense.fromMap);
   final coupons = Coll<Coupon>('coupons', Coupon.fromMap);
+  final offers = Coll<Offer>('offers', Offer.fromMap);
 
   late final Map<Type, Coll> _tables = {
     Member: members, Plan: plans, Subscription: subs, Invoice: invoices, Payment: payments,
     Checkin: checkins, Message: messages, Measurement: measurements, AuditEntry: audit, Staff: staff,
     GymClass: classes, Booking: bookings, Lead: leads, Product: products, Expense: expenses, Coupon: coupons,
+    Offer: offers,
   };
 
   List<Coll> get tables => _tables.values.toList();

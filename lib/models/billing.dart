@@ -122,6 +122,7 @@ class Invoice implements Entity {
   String? voidReason;
   String? notes;
   String? createdBy;
+  String? pendingPlanId; // فاتورة تجديد: يُنشأ الاشتراك تلقائياً عند اكتمال دفعها
 
   Invoice({
     required this.id,
@@ -140,6 +141,7 @@ class Invoice implements Entity {
     this.voidReason,
     this.notes,
     this.createdBy,
+    this.pendingPlanId,
   })  : installments = installments ?? [],
         links = links ?? [];
 
@@ -209,6 +211,7 @@ class Invoice implements Entity {
         'voidReason': voidReason,
         'notes': notes,
         'createdBy': createdBy,
+        'pendingPlanId': pendingPlanId,
       });
 
   factory Invoice.fromMap(Map<String, Object?> m) => Invoice(
@@ -228,6 +231,7 @@ class Invoice implements Entity {
         voidReason: asStrOrNull(m['voidReason']),
         notes: asStrOrNull(m['notes']),
         createdBy: asStrOrNull(m['createdBy']),
+        pendingPlanId: asStrOrNull(m['pendingPlanId']),
       );
 }
 
@@ -249,6 +253,9 @@ class Payment implements Entity {
   final String? reference; // رقم العملية / آخر 4 أرقام البطاقة
   final String? note;
   final String? by;
+  final String? account; // اسم المحفظة/الحساب الذي استُلم عليه المبلغ
+  bool verified; // تأكد الموظف من وصول المبلغ إلى الحساب (للتحويلات والمحافظ)
+  DateTime? verifiedAt;
 
   Payment({
     required this.id,
@@ -261,9 +268,15 @@ class Payment implements Entity {
     this.reference,
     this.note,
     this.by,
+    this.account,
+    this.verified = true,
+    this.verifiedAt,
   });
 
   bool get isRefund => amount < 0;
+
+  /// دفعة تحتاج مطابقة مع كشف المحفظة/البنك
+  bool get needsCheck => !verified && amount > 0;
 
   @override
   Map<String, Object?> toMap() => compact({
@@ -277,6 +290,9 @@ class Payment implements Entity {
         'reference': reference,
         'note': note,
         'by': by,
+        'account': account,
+        'verified': verified ? null : false,
+        'verifiedAt': verifiedAt?.toIso8601String(),
       });
 
   factory Payment.fromMap(Map<String, Object?> m) => Payment(
@@ -290,5 +306,8 @@ class Payment implements Entity {
         reference: asStrOrNull(m['reference']),
         note: asStrOrNull(m['note']),
         by: asStrOrNull(m['by']),
+        account: asStrOrNull(m['account']),
+        verified: asBool(m['verified'], true),
+        verifiedAt: asTime(m['verifiedAt']),
       );
 }

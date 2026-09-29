@@ -6,10 +6,10 @@ import '../../core/money.dart';
 import '../../models/billing.dart';
 import '../../models/member.dart';
 import '../../models/settings.dart';
-import '../../services/reports.dart';
 import '../../services/templates.dart';
 import '../screens/sale_screen.dart';
 import 'common.dart';
+import 'pay_widgets.dart';
 
 /// تحصيل دفعة: على فاتورة محددة أو من رصيد العضو (يوزَّع على الأقدم)
 Future<void> showCollectDialog(BuildContext context, {Invoice? invoice, String? memberId}) async {
@@ -20,8 +20,7 @@ Future<void> showCollectDialog(BuildContext context, {Invoice? invoice, String? 
     return;
   }
   final amount = TextEditingController(text: roundMoney(due).toString());
-  final ref = TextEditingController();
-  var method = PayMethod.cash;
+  final pay = PayChoice();
   final ok = await showDialog<bool>(
     context: context,
     builder: (c) => StatefulBuilder(
@@ -38,14 +37,7 @@ Future<void> showCollectDialog(BuildContext context, {Invoice? invoice, String? 
               decoration: InputDecoration(labelText: tr('المبلغ'), prefixIcon: const Icon(Icons.payments_outlined)),
             ),
             const SizedBox(height: 12),
-            Wrap(spacing: 6, runSpacing: 6, children: [
-              for (final m in PayMethod.values.where((x) => x != PayMethod.online))
-                ChoiceChip(label: Text(payMethodName(m)), selected: method == m, onSelected: (_) => set(() => method = m)),
-            ]),
-            if (method != PayMethod.cash) ...[
-              const SizedBox(height: 12),
-              TextField(controller: ref, decoration: InputDecoration(labelText: tr('رقم العملية'))),
-            ],
+            PayPicker(choice: pay, amount: parseAmount(amount.text) ?? due),
           ]),
         ),
         actions: [
@@ -58,10 +50,11 @@ Future<void> showCollectDialog(BuildContext context, {Invoice? invoice, String? 
   if (ok != true || !context.mounted) return;
   final a = parseAmount(amount.text) ?? 0;
   final sv = context.services;
-  final r = ref.text.trim().isEmpty ? null : ref.text.trim();
   final pays = await runAction(context, () async {
-    if (invoice != null) return [await sv.billing.collect(invoice, a, method, reference: r)];
-    return sv.billing.collectFromMember(memberId!, a, method, reference: r);
+    if (invoice != null) {
+      return [await sv.billing.collect(invoice, a, pay.method, reference: pay.ref, account: pay.accountName, verified: pay.isVerified)];
+    }
+    return sv.billing.collectFromMember(memberId!, a, pay.method, reference: pay.ref, account: pay.accountName, verified: pay.isVerified);
   }, success: tr('تم تسجيل الدفعة ✓'));
   if (pays == null || pays.isEmpty || !context.mounted) return;
   // إيصال للعضو

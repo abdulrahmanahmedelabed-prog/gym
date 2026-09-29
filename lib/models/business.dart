@@ -426,3 +426,77 @@ class Coupon implements Entity {
         active: asBool(m['active'], true),
       );
 }
+
+/// عرض على الباقات: يُطبق تلقائياً عند البيع خلال مدته (بدون كوبون)
+/// type: percent (خصم %) / fixed (خصم مبلغ) / price (سعر خاص)؛ ويمكن إضافة أيام مجانية.
+class Offer implements Entity {
+  @override
+  final String id;
+  String name;
+  String type;
+  double value;
+  int bonusDays;
+  List<String> planIds; // فارغ = كل الباقات
+  DateTime? start;
+  DateTime? end;
+  bool newMembersOnly;
+  bool active;
+
+  Offer({
+    required this.id,
+    required this.name,
+    this.type = 'percent',
+    this.value = 0,
+    this.bonusDays = 0,
+    List<String>? planIds,
+    this.start,
+    this.end,
+    this.newMembersOnly = false,
+    this.active = true,
+  }) : planIds = planIds ?? [];
+
+  bool validOn(DateTime day, String planId, {required bool newMember}) =>
+      active &&
+      (start == null || !dateOnly(day).isBefore(start!)) &&
+      (end == null || !dateOnly(day).isAfter(end!)) &&
+      (planIds.isEmpty || planIds.contains(planId)) &&
+      (!newMembersOnly || newMember);
+
+  /// قيمة الخصم على سعر الباقة
+  double discountFor(double price) {
+    final d = switch (type) {
+      'percent' => price * value / 100,
+      'fixed' => value,
+      'price' => price - value,
+      _ => 0.0,
+    };
+    return d < 0 ? 0 : (d > price ? price : d);
+  }
+
+  @override
+  Map<String, Object?> toMap() => compact({
+        'id': id,
+        'name': name,
+        'type': type,
+        'value': value,
+        'bonusDays': bonusDays == 0 ? null : bonusDays,
+        'planIds': planIds.isEmpty ? null : planIds,
+        'start': start == null ? null : dayKey(start!),
+        'end': end == null ? null : dayKey(end!),
+        'newMembersOnly': newMembersOnly ? true : null,
+        'active': active,
+      });
+
+  factory Offer.fromMap(Map<String, Object?> m) => Offer(
+        id: asStr(m['id']),
+        name: asStr(m['name']),
+        type: asStr(m['type'], 'percent'),
+        value: asDouble(m['value']),
+        bonusDays: asInt(m['bonusDays']),
+        planIds: asStrList(m['planIds']),
+        start: tryParseDay(asStrOrNull(m['start'])),
+        end: tryParseDay(asStrOrNull(m['end'])),
+        newMembersOnly: asBool(m['newMembersOnly']),
+        active: asBool(m['active'], true),
+      );
+}

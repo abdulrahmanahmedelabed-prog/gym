@@ -22,21 +22,29 @@ class BillingService {
   BillingService(this.d) : ms = MembershipService(d);
 
   /// تحصيل دفعة على فاتورة
-  Future<Payment> collect(Invoice inv, double amount, PayMethod method, {String? reference, String? note}) async {
+  Future<Payment> collect(Invoice inv, double amount, PayMethod method,
+      {String? reference, String? note, String? account, bool verified = true}) async {
     amount = roundMoney(amount);
     if (inv.voided) throw GymException(tr('الفاتورة ملغاة'));
     if (amount <= 0) throw GymException(tr('اكتب مبلغاً صحيحاً'));
     if (amount - inv.balance > 0.001) {
       throw GymException(tr('المبلغ أكبر من المتبقي ({b})', {'b': fmtMoney(inv.balance)}));
     }
-    final p = ms.newPayment(inv, PayInput(amount, method, reference), note: note);
+    final p = ms.newPayment(inv, PayInput(amount, method, reference, account, verified), note: note);
     inv.paid = roundMoney(inv.paid + amount);
     await d.putAll([p, inv]);
+    await onPaid(inv);
     return p;
   }
 
+  /// بعد اكتمال دفع الفاتورة: تنفيذ ما ينتظر الدفع (التجديد شبه التلقائي)
+  Future<void> onPaid(Invoice inv) async {
+    if (inv.pendingPlanId != null) await ms.completePendingSale(inv);
+  }
+
   /// توزيع مبلغ على ديون العضو (الأقدم أولاً)
-  Future<List<Payment>> collectFromMember(String memberId, double amount, PayMethod method, {String? reference}) async {
+  Future<List<Payment>> collectFromMember(String memberId, double amount, PayMethod method,
+      {String? reference, String? account, bool verified = true}) async {
     amount = roundMoney(amount);
     final open = d.invoicesOf(memberId).where((i) => i.balance > 0).toList()..sort((a, b) => a.date.compareTo(b.date));
     final total = open.fold(0.0, (s, i) => s + i.balance);
@@ -48,14 +56,58 @@ class BillingService {
     for (final inv in open) {
       if (left <= 0) break;
       final part = left >= inv.balance ? inv.balance : left;
-      final p = ms.newPayment(inv, PayInput(part, method, reference));
+      final p = ms.newPayment(inv, PayInput(part, method, reference, account, verified));
       inv.paid = roundMoney(inv.paid + part);
       left = roundMoney(left - part);
       out.add(p);
       save..add(p)..add(inv);
     }
     await d.putAll(save);
+    for (final inv in open.where((i) => i.balance <= 0)) {
+      await onPaid(inv);
+    }
     return out;
+  }
+
+  // ---------------------------------------------------------------------------
+  // مطابقة التحويلات والمحافظ
+  // ---------------------------------------------------------------------------
+
+  /// الدفعات التي تنتظر التأكد من وصولها للحساب
+  List<Payment> unverified() =>
+      d.payments.all.where((p) => p.needsCheck).toList()..sort((a, b) => a.date.compareTo(b.date));
+
+  Future<void> verifyPayment(Payment p) async {
+    p
+      ..verified = true
+      ..verifiedAt = d.now();
+    await d.putAll([p, d.auditEntry('verify', '${p.number} ${p.account ?? ''} ${p.reference ?? ''} ${fmtMoney(p.amount)}')]);
+  }
+
+  /// المبلغ لم يصل: تُعكس الدفعة ويعود المبلغ ديناً على العضو
+  Future<Payment> rejectPayment(Payment p, String reason) async {
+    if (!d.can(Perm.refund) && !d.can(Perm.sell)) throw GymException(tr('ليست لديك صلاحية'));
+    final inv = d.invoices[p.invoiceId];
+    if (inv == null) throw GymException(tr('الفاتورة غير موجودة'));
+    final rev = Payment(
+      id: newId(),
+      number: d.nextNumber('receipt', 'RC'),
+      invoiceId: inv.id,
+      memberId: inv.memberId,
+      date: d.now(),
+      amount: -p.amount,
+      method: p.method,
+      reference: p.reference,
+      account: p.account,
+      note: tr('لم يصل: {r} (عكس {n})', {'r': reason, 'n': p.number}),
+      by: d.userName,
+    );
+    p
+      ..verified = true
+      ..verifiedAt = d.now();
+    inv.paid = roundMoney(inv.paid - p.amount);
+    await d.putAll([p, rev, inv, d.auditEntry('reject', '${p.number}: ${fmtMoney(p.amount)} — $reason')]);
+    return rev;
   }
 
   /// استرداد مبلغ من فاتورة (يقلل المدفوع ويُسجل في سجل العمليات)

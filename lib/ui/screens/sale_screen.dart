@@ -8,10 +8,10 @@ import '../../models/billing.dart';
 import '../../models/member.dart';
 import '../../models/plan.dart';
 import '../../services/membership.dart';
-import '../../services/reports.dart';
 import '../../services/license.dart';
 import '../widgets/upgrade.dart';
 import '../widgets/common.dart';
+import '../widgets/pay_widgets.dart';
 import 'invoice_screen.dart';
 import 'member_card.dart';
 
@@ -50,10 +50,11 @@ class _SaleScreenState extends State<SaleScreen> {
   final _discount = TextEditingController();
   final _coupon = TextEditingController();
   final _paid = TextEditingController();
-  final _ref = TextEditingController();
+  final _pay = PayChoice();
   final _notes = TextEditingController();
-  PayMethod _method = PayMethod.cash;
   bool _installments = false;
+  bool _useOffer = true;
+  bool _pct = false; // الخصم اليدوي بالنسبة المئوية
   int _instCount = 2;
   List<Installment> _schedule = [];
   bool _saving = false;
@@ -84,16 +85,18 @@ class _SaleScreenState extends State<SaleScreen> {
         memberId: widget.memberId,
         planId: _plan!.id,
         start: _start,
-        discount: parseAmount(_discount.text) ?? 0,
+        discount: _pct ? 0 : (parseAmount(_discount.text) ?? 0),
+        discountPct: _pct ? (parseAmount(_discount.text) ?? 0) : 0,
+        useOffer: _useOffer,
         couponCode: _coupon.text.trim().isEmpty ? null : _coupon.text.trim(),
         registrationFee: _fee,
         trainerId: _plan!.kind == PlanKind.pt ? _trainer : null,
-        payments: withPayments && _paidNow > 0 ? [PayInput(_paidNow, _method, _ref.text.trim().isEmpty ? null : _ref.text.trim())] : const [],
+        payments: withPayments && _paidNow > 0 ? [PayInput(_paidNow, _pay.method, _pay.ref, _pay.accountName, _pay.isVerified)] : const [],
         installments: _installments ? _schedule : const [],
         notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
       );
 
-  ({double price, double fee, double couponDiscount, double total})? _quote() {
+  SaleQuote? _quote() {
     if (_plan == null) return null;
     try {
       _quoteError = null;
@@ -257,13 +260,48 @@ class _SaleScreenState extends State<SaleScreen> {
                 ),
             ]),
           ),
+        if (q?.offer case final o?)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Card(
+              color: const Color(0xFFFFF7ED),
+              child: SwitchListTile(
+                secondary: const Icon(Icons.local_fire_department, color: Color(0xFFEA580C)),
+                title: Text(o.name, style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.black87)),
+                subtitle: Text(
+                    [
+                      if (q!.offerDiscount > 0) tr('خصم {a}', {'a': fmtMoney(q.offerDiscount)}),
+                      if (o.bonusDays > 0) tr('+{n} يوم مجاناً', {'n': o.bonusDays}),
+                      if (o.end != null) tr('حتى {d}', {'d': fmtDay(o.end!)}),
+                    ].join(' • '),
+                    style: const TextStyle(color: Colors.black54)),
+                value: _useOffer,
+                onChanged: (v) => setState(() {
+                  _useOffer = v;
+                  _rebuildSchedule();
+                }),
+              ),
+            ),
+          )
+        else if (!_useOffer)
+          TextButton(onPressed: () => setState(() => _useOffer = true), child: Text(tr('تطبيق العرض الساري'))),
         const SizedBox(height: 12),
         Row(children: [
+          SegmentedButton<bool>(
+            showSelectedIcon: false,
+            segments: [const ButtonSegment(value: true, label: Text('%')), ButtonSegment(value: false, label: Text(Money.symbol))],
+            selected: {_pct},
+            onSelectionChanged: (v) => setState(() {
+              _pct = v.first;
+              _rebuildSchedule();
+            }),
+          ),
+          const SizedBox(width: 8),
           Expanded(
             child: TextField(
               controller: _discount,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(labelText: tr('خصم (مبلغ)'), prefixIcon: const Icon(Icons.percent)),
+              decoration: InputDecoration(labelText: _pct ? tr('خصم %') : tr('خصم (مبلغ)')),
               onChanged: (_) => setState(() => _rebuildSchedule()),
             ),
           ),
@@ -290,7 +328,8 @@ class _SaleScreenState extends State<SaleScreen> {
                 InfoRow(_plan!.name, fmtMoney(q.price)),
                 if (q.fee > 0) InfoRow(tr('رسوم التسجيل'), fmtMoney(q.fee)),
                 if (q.couponDiscount > 0) InfoRow(tr('خصم الكوبون'), '- ${fmtMoney(q.couponDiscount)}', color: Colors.green),
-                if ((parseAmount(_discount.text) ?? 0) > 0) InfoRow(tr('الخصم'), '- ${fmtMoney(parseAmount(_discount.text)!)}', color: Colors.green),
+                if (q.offerDiscount > 0) InfoRow(q.offer!.name, '- ${fmtMoney(q.offerDiscount)}', color: Colors.green),
+                if (q.manualDiscount > 0) InfoRow(tr('الخصم'), '- ${fmtMoney(q.manualDiscount)}', color: Colors.green),
                 if (g.settings.taxEnabled)
                   InfoRow(tr('الضريبة'), '${fmtNum(g.settings.taxRate)}% ${g.settings.taxInclusive ? tr('(شاملة)') : tr('(تضاف)')}'),
                 const Divider(height: 20),
@@ -301,32 +340,14 @@ class _SaleScreenState extends State<SaleScreen> {
         const SizedBox(height: 16),
         Text(tr('الدفع'), style: context.text.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
         const SizedBox(height: 8),
-        Wrap(spacing: 8, runSpacing: 8, children: [
-          for (final pm in PayMethod.values.where((x) => x != PayMethod.online))
-            ChoiceChip(
-              avatar: Icon(payMethodIcon(pm), size: 18),
-              label: Text(payMethodName(pm)),
-              selected: _method == pm,
-              onSelected: (_) => setState(() => _method = pm),
-            ),
-        ]),
+        TextField(
+          controller: _paid,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(labelText: tr('المدفوع الآن'), hintText: fmtMoney(_paidNow, symbol: false), prefixIcon: const Icon(Icons.payments_outlined)),
+          onChanged: (_) => setState(() => _rebuildSchedule()),
+        ),
         const SizedBox(height: 12),
-        Row(children: [
-          Expanded(
-            child: TextField(
-              controller: _paid,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(labelText: tr('المدفوع الآن'), hintText: fmtMoney(_paidNow, symbol: false), prefixIcon: const Icon(Icons.payments_outlined)),
-              onChanged: (_) => setState(() => _rebuildSchedule()),
-            ),
-          ),
-          if (_method != PayMethod.cash) ...[
-            const SizedBox(width: 10),
-            Expanded(
-              child: TextField(controller: _ref, decoration: InputDecoration(labelText: tr('رقم العملية'), prefixIcon: const Icon(Icons.tag))),
-            ),
-          ],
-        ]),
+        PayPicker(choice: _pay, amount: _paidNow, onChanged: () => setState(() {})),
         const SizedBox(height: 8),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
@@ -385,13 +406,6 @@ class _SaleScreenState extends State<SaleScreen> {
   }
 }
 
-IconData payMethodIcon(PayMethod m) => switch (m) {
-      PayMethod.cash => Icons.payments_outlined,
-      PayMethod.card => Icons.credit_card,
-      PayMethod.transfer => Icons.account_balance_outlined,
-      PayMethod.wallet => Icons.phone_iphone,
-      PayMethod.online => Icons.language,
-    };
 
 class _PlanCard extends StatelessWidget {
   final Plan plan;

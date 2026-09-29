@@ -15,10 +15,11 @@ class Rk {
   static const freezeEnd = 'freeze_end';
   static const classReminder = 'class_reminder';
   static const ownerDaily = 'owner_daily';
+  static const renewalRequest = 'renewal_request';
 
   static const all = [
     welcome, receipt, expirySoon, expired, winback, visitsLow, installmentDue, installmentLate,
-    birthday, inactive, freezeEnd, classReminder, ownerDaily,
+    birthday, inactive, freezeEnd, classReminder, renewalRequest, ownerDaily,
   ];
 }
 
@@ -37,6 +38,7 @@ const reminderDefaults = <String, ({bool on, List<int> days})>{
   Rk.freezeEnd: (on: true, days: []),
   Rk.classReminder: (on: true, days: []),
   Rk.ownerDaily: (on: false, days: []),
+  Rk.renewalRequest: (on: true, days: [3]), // قبل الانتهاء بـ 3 أيام لمن فعّل التجديد التلقائي
 };
 
 const defaultTemplatesAr = <String, String>{
@@ -59,6 +61,8 @@ const defaultTemplatesAr = <String, String>{
   Rk.freezeEnd: 'مرحباً {first_name}، ينتهي تجميد اشتراكك غداً. بانتظارك في {gym} 💪',
   Rk.classReminder: 'تذكير: حصة {class} اليوم الساعة {time} في {gym}. نراك هناك! 🔥',
   Rk.ownerDaily: 'ملخص {gym} ليوم {date}:\n{summary}',
+  Rk.renewalRequest: 'مرحباً {first_name} 👋\nاشتراكك ({plan}) في {gym} ينتهي {end_date}، وجهّزنا لك فاتورة التجديد {invoice_no} بمبلغ {amount}.\n'
+      'للدفع:\n{pay_link}\nبعد الدفع أرسل لنا رقم العملية ويتجدد اشتراكك تلقائياً ✅',
 };
 
 const defaultTemplatesEn = <String, String>{
@@ -82,6 +86,8 @@ const defaultTemplatesEn = <String, String>{
   Rk.freezeEnd: 'Hi {first_name}, your membership freeze ends tomorrow. See you at {gym} 💪',
   Rk.classReminder: 'Reminder: {class} today at {time} at {gym}. See you there! 🔥',
   Rk.ownerDaily: '{gym} summary for {date}:\n{summary}',
+  Rk.renewalRequest: 'Hi {first_name} 👋\nYour {gym} membership ({plan}) ends on {end_date}. Your renewal invoice {invoice_no} for {amount} is ready.\n'
+      'To pay:\n{pay_link}\nSend us the transaction number after paying and your membership renews automatically ✅',
 };
 
 /// طريقة إرسال واتساب
@@ -99,6 +105,35 @@ const smsModes = ['phone', 'sim', 'twilio', 'gateway'];
 
 /// بوابات الدفع الإلكتروني
 const payProviders = ['none', 'stripe', 'moyasar', 'tap', 'link'];
+
+/// حساب يستلم عليه النادي الدفع: محفظة (جوال باي، بال باي...) أو حساب بنكي أو معرّف iBuraq
+class PayAccount {
+  String id;
+  String type; // wallet / bank
+  String name;
+  String number; // رقم المحفظة أو الحساب أو IBAN أو المعرّف
+  String holder;
+  String qr; // محتوى رمز QR الموحد لهذا الحساب (من تطبيق البنك/المحفظة)
+  bool active;
+
+  PayAccount({required this.id, this.type = 'wallet', required this.name, this.number = '', this.holder = '', this.qr = '', this.active = true});
+
+  Map<String, Object?> toMap() => {'id': id, 'type': type, 'name': name, 'number': number, 'holder': holder, 'qr': qr, 'active': active};
+
+  factory PayAccount.fromMap(Map<String, Object?> m) => PayAccount(
+        id: asStr(m['id']),
+        type: asStr(m['type'], 'wallet'),
+        name: asStr(m['name']),
+        number: asStr(m['number']),
+        holder: asStr(m['holder']),
+        qr: asStr(m['qr']),
+        active: asBool(m['active'], true),
+      );
+}
+
+/// أسماء جاهزة للاختيار
+const walletPresets = ['جوال باي', 'بال باي', 'انستاباي', 'فودافون كاش', 'STC Pay', 'زين كاش'];
+const bankPresets = ['iBuraq', 'بنك فلسطين', 'البنك العربي', 'البنك الإسلامي العربي', 'البنك الوطني', 'بنك القدس', 'البنك الأهلي'];
 
 /// نافذة زمنية لجنس معين (ساعات السيدات مثلاً)
 class GenderWindow {
@@ -245,6 +280,17 @@ class GymSettings {
   set payReturnUrl(String v) => set('payReturnUrl', v);
   String get walletInfo => _get('walletInfo', ''); // بيانات التحويل: انستاباي، فودافون كاش، STC Pay، IBAN
   set walletInfo(String v) => set('walletInfo', v);
+  List<PayAccount> get payAccounts => asMapList(data['payAccounts']).map(PayAccount.fromMap).toList();
+  set payAccounts(List<PayAccount> v) => set('payAccounts', v.map((a) => a.toMap()).toList());
+  List<PayAccount> get activeAccounts => payAccounts.where((a) => a.active).toList();
+
+  /// نص بيانات الدفع للرسائل: النص المكتوب يدوياً، وإلا يُبنى من حسابات الاستلام
+  String get paymentInstructions {
+    if (walletInfo.trim().isNotEmpty) return walletInfo;
+    final acc = activeAccounts;
+    if (acc.isEmpty) return '';
+    return acc.map((a) => '${a.name}: ${a.number}${a.holder.isEmpty ? '' : ' (${a.holder})'}').join('\n');
+  }
 
   // --- الأمان
   bool get requirePin => _get('requirePin', false);

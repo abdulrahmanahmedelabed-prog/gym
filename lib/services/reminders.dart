@@ -244,8 +244,9 @@ class ReminderEngine {
       if (s.lastReminderRun == today) return 0;
       if (minutesOfDay(now) < s.sendFrom) return 0; // لا نبدأ قبل وقت الإرسال
     }
+    final renewals = await prepareRenewals(dateOnly(now));
     final seen = d.dedupKeys;
-    final fresh = <Message>[];
+    final fresh = <Message>[...renewals];
     for (final m in plan(now)) {
       if (m.dedupKey != null && (seen.contains(m.dedupKey) || fresh.any((x) => x.dedupKey == m.dedupKey))) continue;
       fresh.add(m);
@@ -253,6 +254,36 @@ class ReminderEngine {
     s.lastReminderRun = today;
     await d.putAll(fresh, withSettings: true);
     return fresh.length;
+  }
+
+  /// التجديد شبه التلقائي: لمن فعّل «تجديد تلقائي» تُنشأ فاتورة التجديد قبل الانتهاء بأيام وتُرسل له مع بيانات الدفع
+  Future<List<Message>> prepareRenewals(DateTime day) async {
+    if (!d.has(Feature.autoRenew) || !s.reminderOn(Rk.renewalRequest)) return [];
+    final before = s.reminderDays(Rk.renewalRequest).isEmpty ? 3 : s.reminderDays(Rk.renewalRequest).first;
+    final out = <Message>[];
+    for (final m in d.members.all.where((m) => m.autoRenew && !m.archived)) {
+      final sub = ms.currentSub(m.id, day);
+      if (sub == null || sub.statusOn(day) != SubStatus.active || ms.renewedAfter(sub)) continue;
+      final dl = sub.daysLeft(day);
+      if (dl > before || dl < 0) continue;
+      final plan = d.plans[sub.planId];
+      if (plan == null || !plan.active) continue;
+      final key = 'rr:${sub.id}';
+      if (d.dedupKeys.contains(key)) continue;
+      try {
+        final inv = await ms.createRenewalInvoice(m, plan);
+        final msg = build(
+            member: m,
+            kind: Rk.renewalRequest,
+            body: renderTemplate(s.template(Rk.renewalRequest), {...ctx.forSub(m, sub), ...ctx.forInvoice(m, inv)}),
+            dedupKey: key,
+            invoiceId: inv.id);
+        if (msg != null) out.add(msg);
+      } catch (_) {
+        // حد الأعضاء أو باقة غير متاحة: يُتخطى هذا العضو
+      }
+    }
+    return out;
   }
 
   // ---------------------------------------------------------------------------

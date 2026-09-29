@@ -10,6 +10,7 @@ import '../core/money.dart';
 import '../data/gym_data.dart';
 import '../models/billing.dart';
 import '../models/member.dart';
+import 'license.dart';
 import 'reports.dart';
 
 /// رمز QR للفاتورة الضريبية المبسطة في السعودية (المرحلة الأولى): TLV مشفّر Base64
@@ -85,7 +86,7 @@ class PdfService {
       } catch (_) {}
     }
     String? zatca;
-    if (s.zatcaQr && inv.taxRate > 0 && s.taxNumber.isNotEmpty) {
+    if (s.zatcaQr && d.has(Feature.zatca) && inv.taxRate > 0 && s.taxNumber.isNotEmpty) {
       zatca = zatcaTlv(seller: s.gymName, vatNumber: s.taxNumber, time: inv.date, total: inv.total, vat: inv.tax);
     }
     String? payLink;
@@ -164,7 +165,27 @@ class PdfService {
                   fmtMoney(p.amount), size: small),
           ]);
 
+    // رمز QR الموحد لحساب الاستلام (iBuraq) إن بقي مبلغ
+    String? walletQr;
+    String walletLabel = '';
+    if (inv.balance > 0 && d.has(Feature.walletQr)) {
+      for (final a in s.activeAccounts) {
+        if (a.qr.isNotEmpty) {
+          walletQr = a.qr;
+          walletLabel = a.name;
+          break;
+        }
+      }
+    }
     final qrs = pw.Row(mainAxisAlignment: pw.MainAxisAlignment.center, children: [
+      if (walletQr != null)
+        pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 12),
+          child: pw.Column(children: [
+            pw.BarcodeWidget(barcode: pw.Barcode.qrCode(), data: walletQr, width: thermal ? 70 : 90, height: thermal ? 70 : 90),
+            _t('${tr('ادفع')} ${fmtMoney(inv.balance)} — $walletLabel', size: small),
+          ]),
+        ),
       if (zatca != null)
         pw.Column(children: [
           pw.BarcodeWidget(barcode: pw.Barcode.qrCode(), data: zatca, width: thermal ? 70 : 90, height: thermal ? 70 : 90),
@@ -189,7 +210,7 @@ class PdfService {
       thermal ? totals : pw.Row(children: [pw.Expanded(flex: 3, child: pw.SizedBox()), pw.Expanded(flex: 2, child: totals)]),
       ?inst,
       ?payList,
-      if (zatca != null || payLink != null) ...[pw.SizedBox(height: 12), qrs],
+      if (zatca != null || payLink != null || walletQr != null) ...[pw.SizedBox(height: 12), qrs],
       if (footer != null) ...[pw.SizedBox(height: 12), pw.Center(child: footer)],
     ];
 

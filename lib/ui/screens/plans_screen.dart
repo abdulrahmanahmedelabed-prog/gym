@@ -10,6 +10,7 @@ import '../../models/plan.dart';
 import '../../services/license.dart';
 import '../widgets/upgrade.dart';
 import '../widgets/common.dart';
+import 'offers_screen.dart';
 import 'sale_screen.dart';
 
 const planColors = [0xFF1E88E5, 0xFF43A047, 0xFFFB8C00, 0xFFE53935, 0xFF8E24AA, 0xFF00ACC1, 0xFF6D4C41, 0xFF757575, 0xFFD81B60, 0xFF3949AB];
@@ -27,7 +28,15 @@ class PlansScreen extends StatelessWidget {
       sold[s.planId] = (sold[s.planId] ?? 0) + 1;
     }
     return Scaffold(
-      appBar: AppBar(title: Text(tr('الباقات والأسعار'))),
+      appBar: AppBar(title: Text(tr('الباقات والأسعار')), actions: [
+        TextButton.icon(
+          onPressed: () async {
+            if (await ensureFeature(context, Feature.offers) && context.mounted) context.push(const OffersScreen());
+          },
+          icon: const Icon(Icons.local_fire_department_outlined),
+          label: Text(tr('العروض')),
+        ),
+      ]),
       floatingActionButton: canEdit
           ? FloatingActionButton.extended(onPressed: () => context.push(const PlanFormScreen()), icon: const Icon(Icons.add), label: Text(tr('باقة')))
           : null,

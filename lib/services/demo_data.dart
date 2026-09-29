@@ -36,20 +36,25 @@ class DemoData {
 
   T pick<T>(List<T> l) => l[rnd.nextInt(l.length)];
 
-  String phone() => '010${(10000000 + rnd.nextInt(89999999))}';
+  String phone() => '05${rnd.nextBool() ? 9 : 6}${(1000000 + rnd.nextInt(8999999))}';
 
   Future<void> generate({int members = 140}) async {
     final now = d.now();
     final today = dateOnly(now);
     final s = d.settings
       ..gymName = 'نادي القوة الرياضي'
-      ..gymPhone = '01001234567'
-      ..address = 'شارع التسعين، القاهرة الجديدة'
-      ..currencyCode = 'EGP'
-      ..currencySymbol = 'ج.م'
-      ..countryCode = '20'
-      ..walletInfo = 'للدفع: انستاباي power.gym@instapay أو فودافون كاش 01001234567'
+      ..gymPhone = '0599123456'
+      ..address = 'شارع الإرسال، رام الله'
+      ..currencyCode = 'ILS'
+      ..currencySymbol = '₪'
+      ..countryCode = '970'
+      ..payAccounts = [
+        PayAccount(id: 'acc-jawwal', name: 'جوال باي', number: '0599123456', holder: 'نادي القوة', qr: 'DEMO-IBURAQ-JAWWALPAY-0599123456'),
+        PayAccount(id: 'acc-palpay', name: 'بال باي', number: '0569123456', holder: 'نادي القوة', qr: 'DEMO-IBURAQ-PALPAY-0569123456'),
+        PayAccount(id: 'acc-bop', type: 'bank', name: 'بنك فلسطين', number: 'PS92 PALS 0000 0000 0400 1234 5678 9', holder: 'نادي القوة الرياضي', qr: 'DEMO-IBURAQ-BOP-400123456789'),
+      ]
       ..genderWindows = [GenderWindow(gender: 'f', weekdays: [6, 7, 1, 2, 3], from: 10 * 60, to: 14 * 60)]
+      ..walletInfo = ''
       ..onboarded = true
       ..set('genderStrict', false);
     d.applySettings();
@@ -76,14 +81,14 @@ class DemoData {
       return p;
     }
 
-    final monthly = plan('شهري', PlanKind.time, 1, DurationUnit.month, 600, freezeDays: 7, freezeTimes: 1, color: 0xFF1E88E5, sort: 1, fee: 100);
-    final quarter = plan('3 أشهر', PlanKind.time, 3, DurationUnit.month, 1500, freezeDays: 15, freezeTimes: 2, color: 0xFF43A047, sort: 2, fee: 100);
-    final half = plan('6 أشهر', PlanKind.time, 6, DurationUnit.month, 2700, freezeDays: 30, freezeTimes: 2, color: 0xFFFB8C00, sort: 3);
-    final year = plan('سنوي', PlanKind.time, 1, DurationUnit.year, 4800, freezeDays: 60, freezeTimes: 3, color: 0xFFE53935, sort: 4);
-    final twelve = plan('12 حصة', PlanKind.visits, 2, DurationUnit.month, 450, visits: 12, color: 0xFF8E24AA, sort: 5);
-    final morning = plan('الصباحي (6ص-2م)', PlanKind.time, 1, DurationUnit.month, 400, color: 0xFF00ACC1, sort: 6, from: 6 * 60, to: 14 * 60);
-    final pt8 = plan('تدريب شخصي 8 جلسات', PlanKind.pt, 1, DurationUnit.month, 1600, visits: 8, color: 0xFF6D4C41, sort: 7);
-    plan('يوم واحد', PlanKind.time, 1, DurationUnit.day, 80, color: 0xFF757575, sort: 8);
+    final monthly = plan('شهري', PlanKind.time, 1, DurationUnit.month, 150, freezeDays: 7, freezeTimes: 1, color: 0xFF1E88E5, sort: 1, fee: 30);
+    final quarter = plan('3 أشهر', PlanKind.time, 3, DurationUnit.month, 400, freezeDays: 15, freezeTimes: 2, color: 0xFF43A047, sort: 2, fee: 30);
+    final half = plan('6 أشهر', PlanKind.time, 6, DurationUnit.month, 750, freezeDays: 30, freezeTimes: 2, color: 0xFFFB8C00, sort: 3);
+    final year = plan('سنوي', PlanKind.time, 1, DurationUnit.year, 1400, freezeDays: 60, freezeTimes: 3, color: 0xFFE53935, sort: 4);
+    final twelve = plan('12 حصة', PlanKind.visits, 2, DurationUnit.month, 120, visits: 12, color: 0xFF8E24AA, sort: 5);
+    final morning = plan('الصباحي (6ص-2م)', PlanKind.time, 1, DurationUnit.month, 110, color: 0xFF00ACC1, sort: 6, from: 6 * 60, to: 14 * 60);
+    final pt8 = plan('تدريب شخصي 8 جلسات', PlanKind.pt, 1, DurationUnit.month, 600, visits: 8, color: 0xFF6D4C41, sort: 7);
+    plan('يوم واحد', PlanKind.time, 1, DurationUnit.day, 25, color: 0xFF757575, sort: 8);
     final plans = [monthly, monthly, monthly, quarter, quarter, half, year, twelve, morning];
 
     final owner = Staff(id: newId(), name: 'المدير العام', role: Role.owner);
@@ -107,16 +112,18 @@ class DemoData {
     save.addAll(classes);
 
     final products = [
-      Product(id: newId(), name: 'مياه معدنية', category: 'مشروبات', price: 10, cost: 5, stock: 180, minStock: 40),
-      Product(id: newId(), name: 'مشروب طاقة', category: 'مشروبات', price: 35, cost: 22, stock: 60, minStock: 20),
-      Product(id: newId(), name: 'بروتين بار', category: 'مكملات', price: 45, cost: 28, stock: 14, minStock: 15),
-      Product(id: newId(), name: 'واي بروتين 2 كجم', category: 'مكملات', price: 2200, cost: 1800, stock: 6, minStock: 2),
-      Product(id: newId(), name: 'منشفة النادي', category: 'ملابس', price: 120, cost: 60, stock: 25, minStock: 5),
-      Product(id: newId(), name: 'قفازات تمرين', category: 'ملابس', price: 180, cost: 100, stock: 12, minStock: 4),
+      Product(id: newId(), name: 'مياه معدنية', category: 'مشروبات', price: 3, cost: 1.5, stock: 180, minStock: 40),
+      Product(id: newId(), name: 'مشروب طاقة', category: 'مشروبات', price: 10, cost: 6, stock: 60, minStock: 20),
+      Product(id: newId(), name: 'بروتين بار', category: 'مكملات', price: 12, cost: 7, stock: 14, minStock: 15),
+      Product(id: newId(), name: 'واي بروتين 2 كجم', category: 'مكملات', price: 280, cost: 220, stock: 6, minStock: 2),
+      Product(id: newId(), name: 'منشفة النادي', category: 'ملابس', price: 35, cost: 18, stock: 25, minStock: 5),
+      Product(id: newId(), name: 'قفازات تمرين', category: 'ملابس', price: 50, cost: 28, stock: 12, minStock: 4),
     ];
     save.addAll(products);
     save.add(Coupon(id: newId(), code: 'RAMADAN20', value: 20, validUntil: addDays(today, 20)));
-    save.add(Coupon(id: newId(), code: 'STUDENT', percent: false, value: 100));
+    save.add(Offer(id: newId(), name: 'عرض الخريف', value: 15, planIds: [quarter.id, half.id], start: addDays(today, -5), end: addDays(today, 20)));
+    save.add(Offer(id: newId(), name: 'السنوي + شهر هدية', type: 'fixed', value: 0, bonusDays: 30, planIds: [year.id], end: addDays(today, 45)));
+    save.add(Coupon(id: newId(), code: 'STUDENT', percent: false, value: 30));
 
     final invoices = <Invoice>[];
     final payments = <Payment>[];
@@ -135,10 +142,13 @@ class DemoData {
 
     void pay(Invoice inv, double amount, DateTime date) {
       if (amount <= 0) return;
-      final method = rnd.nextDouble() < 0.6
+      final method = rnd.nextDouble() < 0.5
           ? PayMethod.cash
-          : (rnd.nextDouble() < 0.5 ? PayMethod.card : (rnd.nextBool() ? PayMethod.wallet : PayMethod.transfer));
+          : (rnd.nextDouble() < 0.25 ? PayMethod.card : (rnd.nextDouble() < 0.7 ? PayMethod.wallet : PayMethod.transfer));
+      final account = method == PayMethod.wallet ? (rnd.nextBool() ? 'جوال باي' : 'بال باي') : (method == PayMethod.transfer ? 'بنك فلسطين' : null);
       payments.add(Payment(
+          account: account,
+          verified: account == null || date.isBefore(now.subtract(const Duration(days: 2))) || rnd.nextDouble() < 0.6,
           id: newId(),
           number: '',
           invoiceId: inv.id,
@@ -167,6 +177,7 @@ class DemoData {
         source: pick(['فيسبوك', 'إنستجرام', 'صديق', 'مرّ من أمام النادي', 'جوجل', 'تيك توك']),
         medicalNotes: rnd.nextDouble() < 0.06 ? pick(['ضغط مرتفع', 'إصابة سابقة في الركبة', 'ربو خفيف', 'آلام أسفل الظهر']) : null,
         channel: rnd.nextDouble() < 0.9 ? Channel.whatsapp : Channel.sms,
+        autoRenew: rnd.nextDouble() < 0.3,
       );
       if (i == 3 || i == 11) m.birthDate = DateTime(1995, today.month, today.day); // أعياد ميلاد اليوم
       if (i > 5 && rnd.nextDouble() < 0.15 && mems.isNotEmpty) m.referredBy = pick(mems).id;
@@ -205,7 +216,7 @@ class DemoData {
         final inv = newInv(m, sub.createdAt, items, discount: discount);
         sub.invoiceId = inv.id;
         // أقساط للباقات الطويلة أحياناً
-        if (p.price >= 2700 && rnd.nextDouble() < 0.45) {
+        if (p.price >= 750 && rnd.nextDouble() < 0.45) {
           final down = roundMoney(inv.total * 0.4);
           final rest = inv.total - down;
           inv.installments = [
@@ -317,11 +328,11 @@ class DemoData {
       final day0 = DateTime(base.year, base.month, 5);
       if (day0.isAfter(today)) continue;
       expenses.addAll([
-        Expense(id: newId(), date: day0, category: 'إيجار', amount: 25000, by: owner.name),
-        Expense(id: newId(), date: DateTime(base.year, base.month, 28).isAfter(today) ? today : DateTime(base.year, base.month, 28), category: 'رواتب', amount: 32000, by: owner.name),
-        Expense(id: newId(), date: DateTime(base.year, base.month, 12), category: 'كهرباء ومياه', amount: 4000 + rnd.nextInt(2500).toDouble(), by: owner.name),
-        if (rnd.nextBool()) Expense(id: newId(), date: DateTime(base.year, base.month, 18), category: 'صيانة الأجهزة', amount: 800 + rnd.nextInt(3000).toDouble(), by: owner.name),
-        if (rnd.nextBool()) Expense(id: newId(), date: DateTime(base.year, base.month, 20), category: 'إعلانات', amount: 1500 + rnd.nextInt(2000).toDouble(), by: owner.name),
+        Expense(id: newId(), date: day0, category: 'إيجار', amount: 6000, by: owner.name),
+        Expense(id: newId(), date: DateTime(base.year, base.month, 28).isAfter(today) ? today : DateTime(base.year, base.month, 28), category: 'رواتب', amount: 9000, by: owner.name),
+        Expense(id: newId(), date: DateTime(base.year, base.month, 12), category: 'كهرباء ومياه', amount: 1200 + rnd.nextInt(600).toDouble(), by: owner.name),
+        if (rnd.nextBool()) Expense(id: newId(), date: DateTime(base.year, base.month, 18), category: 'صيانة الأجهزة', amount: 300 + rnd.nextInt(700).toDouble(), by: owner.name),
+        if (rnd.nextBool()) Expense(id: newId(), date: DateTime(base.year, base.month, 20), category: 'إعلانات', amount: 400 + rnd.nextInt(500).toDouble(), by: owner.name),
       ].where((e) => !e.date.isAfter(today)));
     }
 

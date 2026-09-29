@@ -17,6 +17,7 @@ class CountryPreset {
 }
 
 const countryPresets = [
+  CountryPreset('فلسطين', 'Palestine', '970', 'ILS', '₪', 16),
   CountryPreset('مصر', 'Egypt', '20', 'EGP', 'ج.م', 14),
   CountryPreset('السعودية', 'Saudi Arabia', '966', 'SAR', 'ر.س', 15),
   CountryPreset('الإمارات', 'UAE', '971', 'AED', 'د.إ', 5),
@@ -25,7 +26,6 @@ const countryPresets = [
   CountryPreset('البحرين', 'Bahrain', '973', 'BHD', 'د.ب', 10),
   CountryPreset('عُمان', 'Oman', '968', 'OMR', 'ر.ع', 5),
   CountryPreset('الأردن', 'Jordan', '962', 'JOD', 'د.أ', 16),
-  CountryPreset('فلسطين', 'Palestine', '970', 'ILS', '₪', 16),
   CountryPreset('العراق', 'Iraq', '964', 'IQD', 'د.ع', 0),
   CountryPreset('لبنان', 'Lebanon', '961', 'USD', r'$', 11),
   CountryPreset('سوريا', 'Syria', '963', 'SYP', 'ل.س', 0),

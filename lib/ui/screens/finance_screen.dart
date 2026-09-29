@@ -25,8 +25,10 @@ class FinanceScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final g = context.gymWatch;
     final canExp = g.can(Perm.expenses) && g.has(Feature.fullReports);
+    final canRec = g.has(Feature.walletQr);
+    final pendingChecks = canRec ? context.services.billing.unverified().length : 0;
     return DefaultTabController(
-      length: canExp ? 4 : 3,
+      length: (canExp ? 4 : 3) + (canRec ? 1 : 0),
       child: Scaffold(
         appBar: AppBar(
           title: Text(tr('المالية')),
@@ -50,6 +52,7 @@ class FinanceScreen extends StatelessWidget {
             Tab(text: tr('الفواتير')),
             Tab(text: tr('الأقساط')),
             Tab(text: tr('المدينون')),
+            if (canRec) Tab(child: Badge(isLabelVisible: pendingChecks > 0, label: Text('$pendingChecks'), child: Text(tr('المطابقة')))),
             if (canExp) Tab(text: tr('المصروفات')),
           ]),
         ),
@@ -57,6 +60,7 @@ class FinanceScreen extends StatelessWidget {
           const _InvoicesList(),
           const _InstallmentsList(),
           const _DebtorsList(),
+          if (canRec) const _Reconciliation(),
           if (canExp) const _ExpensesList(),
         ]),
       ),
@@ -240,6 +244,89 @@ class _DebtorsList extends StatelessWidget {
             ]),
             onTap: () => context.push(MemberDetailScreen(memberId: m.id)),
           ),
+    ]);
+  }
+}
+
+/// مطابقة المحافظ والحسابات البنكية: تأكيد وصول التحويلات ومجاميع كل حساب
+class _Reconciliation extends StatefulWidget {
+  const _Reconciliation();
+  @override
+  State<_Reconciliation> createState() => _ReconciliationState();
+}
+
+class _ReconciliationState extends State<_Reconciliation> {
+  bool _month = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final g = context.gymWatch;
+    final sv = context.services;
+    final list = sv.billing.unverified();
+    final r = _month ? Range.thisMonth(g.now()) : Range.today(g.now());
+    final byAcc = sv.reports.collectedByAccount(r);
+    return ListView(padding: const EdgeInsets.only(bottom: 24), children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+        child: Text(tr('قارن هذه المجاميع مع كشف كل محفظة أو حساب بنكي'), style: TextStyle(color: context.colors.onSurfaceVariant)),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: SegmentedButton<bool>(
+          segments: [ButtonSegment(value: false, label: Text(tr('اليوم'))), ButtonSegment(value: true, label: Text(tr('هذا الشهر')))],
+          selected: {_month},
+          onSelectionChanged: (v) => setState(() => _month = v.first),
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.all(16),
+        child: Card(
+          child: Column(children: [
+            if (byAcc.isEmpty) Padding(padding: const EdgeInsets.all(16), child: Text(tr('لا دفعات في هذه الفترة'))),
+            for (final e in byAcc.entries.toList()..sort((a, b) => b.value.total.compareTo(a.value.total)))
+              ListTile(
+                title: Text(e.key, style: const TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: Text(tr('{n} عملية', {'n': e.value.count}) + (e.value.unverified > 0 ? ' • ${tr('{n} بانتظار التأكد', {'n': e.value.unverified})}' : '')),
+                trailing: Text(fmtMoney(e.value.total), style: const TextStyle(fontWeight: FontWeight.w800)),
+              ),
+          ]),
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Text(tr('بانتظار التأكد من الوصول ({n})', {'n': list.length}), style: context.text.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+      ),
+      if (list.isEmpty)
+        Padding(padding: const EdgeInsets.all(16), child: Text(tr('كل التحويلات مؤكدة ✓'), style: const TextStyle(color: StatusColors.active))),
+      for (final p in list)
+        Card(
+          margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: ListTile(
+            title: Text('${fmtMoney(p.amount)} — ${p.account ?? payMethodName(p.method)}', style: const TextStyle(fontWeight: FontWeight.w700)),
+            subtitle: Text([
+              g.members[p.memberId]?.name ?? '',
+              if (p.reference != null) '${tr('رقم العملية')}: ${p.reference}',
+              '${dayKey(p.date)} ${hhmm(minutesOfDay(p.date))}',
+            ].where((x) => x.isNotEmpty).join('\n')),
+            isThreeLine: true,
+            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+              IconButton(
+                tooltip: tr('لم يصل'),
+                icon: const Icon(Icons.close, color: StatusColors.expired),
+                onPressed: () async {
+                  final reason = await askText(context, tr('المبلغ لم يصل؟ سيعود ديناً على العضو'), hint: tr('السبب'), ok: tr('تأكيد'));
+                  if (reason == null || !context.mounted) return;
+                  await runAction(context, () => sv.billing.rejectPayment(p, reason), success: tr('عُكست الدفعة'));
+                },
+              ),
+              IconButton.filledTonal(
+                tooltip: tr('وصل'),
+                icon: const Icon(Icons.check, color: StatusColors.active),
+                onPressed: () => runAction(context, () => sv.billing.verifyPayment(p), success: tr('تم التأكيد ✓')),
+              ),
+            ]),
+          ),
+        ),
     ]);
   }
 }

@@ -11,7 +11,9 @@ import '../../models/business.dart';
 import '../../models/member.dart';
 import '../../models/plan.dart';
 import '../../models/subscription.dart';
+import '../../models/settings.dart';
 import '../../services/membership.dart';
+import '../../services/templates.dart';
 import '../theme.dart';
 import '../../services/license.dart';
 import '../widgets/upgrade.dart';
@@ -58,6 +60,8 @@ class MemberDetailScreen extends StatelessWidget {
                   PopupMenuItem(value: 'adjust', child: ListTile(leading: const Icon(Icons.edit_calendar), title: Text(tr('تعديل تاريخ الانتهاء')))),
                 if (sub != null && g.can(Perm.refund))
                   PopupMenuItem(value: 'cancel', child: ListTile(leading: const Icon(Icons.cancel_outlined), title: Text(tr('إلغاء الاشتراك واسترداد')))),
+                if (sub != null && g.can(Perm.sell))
+                  PopupMenuItem(value: 'renewal', child: ListTile(leading: const Icon(Icons.autorenew), title: Text(tr('إرسال طلب تجديد')), trailing: lockFor(context, Feature.autoRenew))),
                 PopupMenuItem(value: 'invoice', child: ListTile(leading: const Icon(Icons.receipt_long_outlined), title: Text(tr('فاتورة يدوية')))),
                 PopupMenuItem(value: 'measure', child: ListTile(leading: const Icon(Icons.monitor_weight_outlined), title: Text(tr('إضافة قياسات')))),
                 PopupMenuItem(value: 'archive', child: ListTile(leading: const Icon(Icons.archive_outlined), title: Text(m.archived ? tr('إلغاء الأرشفة') : tr('أرشفة العضو')))),
@@ -209,6 +213,24 @@ class MemberDetailScreen extends StatelessWidget {
         await runAction(context, () => sv.members.adjustEnd(sub, d, reason), success: tr('تم التعديل'));
       case 'cancel':
         await _cancelDialog(context, sub!);
+      case 'renewal':
+        if (!await ensureFeature(context, Feature.autoRenew) || !context.mounted) return;
+        final plan = g.plans[sub!.planId];
+        if (plan == null || !plan.active) {
+          context.toast(tr('باقة الاشتراك الحالي غير متاحة للبيع'), error: true);
+          return;
+        }
+        final inv = await runAction(context, () => sv.members.createRenewalInvoice(m, plan));
+        if (inv == null || !context.mounted) return;
+        final msg = sv.reminders.build(
+            member: m,
+            kind: Rk.renewalRequest,
+            body: renderTemplate(g.settings.template(Rk.renewalRequest), {...TemplateContext(g).forSub(m, sub), ...TemplateContext(g).forInvoice(m, inv)}),
+            invoiceId: inv.id);
+        if (msg != null) {
+          final r = await runAction(context, () => sv.send(msg));
+          if (r != null && context.mounted) context.toast(r);
+        }
       case 'invoice':
         await _manualInvoice(context, m);
       case 'measure':

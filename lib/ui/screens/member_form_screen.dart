@@ -6,7 +6,9 @@ import 'package:image_picker/image_picker.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../models/member.dart';
+import '../../services/license.dart';
 import '../widgets/common.dart';
+import '../widgets/upgrade.dart';
 import 'members_screen.dart';
 import 'sale_screen.dart';
 
@@ -222,6 +224,17 @@ class _MemberFormScreenState extends State<MemberFormScreen> {
             ],
             selected: {_m.channel},
             onSelectionChanged: (v) => setState(() => _m.channel = v.first),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            secondary: lockFor(context, Feature.autoRenew),
+            title: Text(tr('تجديد تلقائي')),
+            subtitle: Text(tr('قبل الانتهاء بأيام تُجهّز فاتورة التجديد وتُرسل له مع رمز الدفع، ويتجدد عند الدفع')),
+            value: _m.autoRenew,
+            onChanged: (v) async {
+              if (v && !await ensureFeature(context, Feature.autoRenew)) return;
+              setState(() => _m.autoRenew = v);
+            },
           ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,

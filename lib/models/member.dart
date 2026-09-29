@@ -38,6 +38,7 @@ class Member implements Entity {
   String cardToken; // محتوى رمز QR على البطاقة
   Channel channel;
   bool optOut; // لا يريد رسائل تذكير/تسويق (الفواتير تُرسل عند الطلب فقط)
+  bool autoRenew; // يُرسل له طلب التجديد تلقائياً قبل الانتهاء
   List<String> tags;
   bool archived;
   DateTime createdAt;
@@ -64,6 +65,7 @@ class Member implements Entity {
     this.referredBy,
     this.channel = Channel.whatsapp,
     this.optOut = false,
+    this.autoRenew = false,
     List<String>? tags,
     this.archived = false,
   }) : tags = tags ?? [];
@@ -106,6 +108,7 @@ class Member implements Entity {
         'cardToken': cardToken,
         'channel': channel.name,
         'optOut': optOut ? true : null,
+        'autoRenew': autoRenew ? true : null,
         'tags': tags.isEmpty ? null : tags,
         'archived': archived ? true : null,
         'createdAt': createdAt.toIso8601String(),
@@ -132,6 +135,7 @@ class Member implements Entity {
         cardToken: asStr(m['cardToken']),
         channel: channelFrom(m['channel']),
         optOut: asBool(m['optOut']),
+        autoRenew: asBool(m['autoRenew']),
         tags: asStrList(m['tags']),
         archived: asBool(m['archived']),
         createdAt: asTime(m['createdAt']) ?? DateTime.now(),
