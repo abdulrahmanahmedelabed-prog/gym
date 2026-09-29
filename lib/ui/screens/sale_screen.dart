@@ -56,7 +56,8 @@ class _SaleScreenState extends State<SaleScreen> {
   bool _useOffer = true;
   bool _pct = false; // الخصم اليدوي بالنسبة المئوية
   int _instCount = 2;
-  List<Installment> _schedule = [];
+  /// تواريخ الأقساط التي عدّلها الموظف يدوياً (رقم القسط ← التاريخ)
+  final Map<int, DateTime> _customDue = {};
   bool _saving = false;
   String? _quoteError;
 
@@ -78,7 +79,6 @@ class _SaleScreenState extends State<SaleScreen> {
     _start = p.kind == PlanKind.pt ? context.gym.today : ms.suggestedStart(widget.memberId);
     _fee = p.registrationFee > 0 && ms.isNewMember(widget.memberId);
     _paid.text = '';
-    _rebuildSchedule();
   }
 
   SaleRequest _request({bool withPayments = true}) => SaleRequest(
@@ -92,7 +92,7 @@ class _SaleScreenState extends State<SaleScreen> {
         registrationFee: _fee,
         trainerId: _plan!.kind == PlanKind.pt ? _trainer : null,
         payments: withPayments && _paidNow > 0 ? [PayInput(_paidNow, _pay.method, _pay.ref, _pay.accountName, _pay.isVerified)] : const [],
-        installments: _installments ? _schedule : const [],
+        installments: withPayments && _installments ? _schedule : const [],
         notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
       );
 
@@ -115,18 +115,18 @@ class _SaleScreenState extends State<SaleScreen> {
     return _installments ? roundMoney(_total / (_instCount + 1)) : _total;
   }
 
-  void _rebuildSchedule() {
-    if (!_installments) {
-      _schedule = [];
-      return;
-    }
+  /// جدول الأقساط يُحسب دائماً من الإجمالي والمدفوع الحاليين (فلا يبقى على أرقام قديمة)،
+  /// ويحتفظ بالتواريخ التي عدّلها الموظف
+  List<Installment> get _schedule {
+    if (!_installments) return const [];
     final rest = roundMoney(_total - _paidNow);
+    if (rest <= 0) return const [];
     final each = roundMoney(rest / _instCount);
     final base = _start ?? context.gym.today;
-    _schedule = [
+    return [
       for (var i = 0; i < _instCount; i++)
         Installment(
-          due: addMonthsClamped(base, i + 1).$1,
+          due: _customDue[i] ?? addMonthsClamped(base, i + 1).$1,
           amount: i == _instCount - 1 ? roundMoney(rest - each * (_instCount - 1)) : each,
         ),
     ];
@@ -134,7 +134,6 @@ class _SaleScreenState extends State<SaleScreen> {
 
   Future<void> _confirm() async {
     if (_plan == null) return;
-    if (_installments) _rebuildSchedule();
     setState(() => _saving = true);
     final sv = context.services;
     final res = await runAction(context, () => sv.members.sell(_request()));
@@ -276,10 +275,7 @@ class _SaleScreenState extends State<SaleScreen> {
                     ].join(' • '),
                     style: const TextStyle(color: Colors.black54)),
                 value: _useOffer,
-                onChanged: (v) => setState(() {
-                  _useOffer = v;
-                  _rebuildSchedule();
-                }),
+                onChanged: (v) => setState(() => _useOffer = v),
               ),
             ),
           )
@@ -291,10 +287,7 @@ class _SaleScreenState extends State<SaleScreen> {
             showSelectedIcon: false,
             segments: [const ButtonSegment(value: true, label: Text('%')), ButtonSegment(value: false, label: Text(Money.symbol))],
             selected: {_pct},
-            onSelectionChanged: (v) => setState(() {
-              _pct = v.first;
-              _rebuildSchedule();
-            }),
+            onSelectionChanged: (v) => setState(() => _pct = v.first),
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -302,7 +295,7 @@ class _SaleScreenState extends State<SaleScreen> {
               controller: _discount,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: InputDecoration(labelText: _pct ? tr('خصم %') : tr('خصم (مبلغ)')),
-              onChanged: (_) => setState(() => _rebuildSchedule()),
+              onChanged: (_) => setState(() {}),
             ),
           ),
           const SizedBox(width: 10),
@@ -313,7 +306,7 @@ class _SaleScreenState extends State<SaleScreen> {
               readOnly: !g.has(Feature.offers),
               onTap: g.has(Feature.offers) ? null : () => ensureFeature(context, Feature.offers),
               decoration: InputDecoration(labelText: tr('كوبون'), prefixIcon: const Icon(Icons.local_offer_outlined), suffixIcon: lockFor(context, Feature.offers)),
-              onChanged: (_) => setState(() => _rebuildSchedule()),
+              onChanged: (_) => setState(() {}),
             ),
           ),
         ]),
@@ -344,7 +337,7 @@ class _SaleScreenState extends State<SaleScreen> {
           controller: _paid,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: InputDecoration(labelText: tr('المدفوع الآن'), hintText: fmtMoney(_paidNow, symbol: false), prefixIcon: const Icon(Icons.payments_outlined)),
-          onChanged: (_) => setState(() => _rebuildSchedule()),
+          onChanged: (_) => setState(() {}),
         ),
         const SizedBox(height: 12),
         PayPicker(choice: _pay, amount: _paidNow, onChanged: () => setState(() {})),
@@ -357,38 +350,29 @@ class _SaleScreenState extends State<SaleScreen> {
           value: _installments,
           onChanged: (v) async {
             if (v && !await ensureFeature(context, Feature.installments)) return;
-            setState(() {
-              _installments = v;
-              _paid.text = '';
-              _rebuildSchedule();
-            });
+            // لا نمسح المبلغ الذي كتبه الموظف: الباقي بعده هو ما يُقسَّط
+            setState(() => _installments = v);
           },
         ),
         if (_installments) ...[
           Row(children: [
             Text(tr('عدد الأقساط')),
             const Spacer(),
-            IconButton(onPressed: _instCount > 1 ? () => setState(() {
-              _instCount--;
-              _rebuildSchedule();
-            }) : null, icon: const Icon(Icons.remove_circle_outline)),
+            IconButton(onPressed: _instCount > 1 ? () => setState(() => _instCount--) : null, icon: const Icon(Icons.remove_circle_outline)),
             Text('$_instCount', style: context.text.titleMedium),
-            IconButton(onPressed: _instCount < 12 ? () => setState(() {
-              _instCount++;
-              _rebuildSchedule();
-            }) : null, icon: const Icon(Icons.add_circle_outline)),
+            IconButton(onPressed: _instCount < 12 ? () => setState(() => _instCount++) : null, icon: const Icon(Icons.add_circle_outline)),
           ]),
           Card(
             child: Column(children: [
-              for (var i = 0; i < _schedule.length; i++)
+              for (final (i, inst) in _schedule.indexed)
                 ListTile(
                   dense: true,
                   leading: CircleAvatar(radius: 14, child: Text('${i + 1}', style: const TextStyle(fontSize: 12))),
-                  title: Text(fmtDay(_schedule[i].due)),
-                  trailing: Text(fmtMoney(_schedule[i].amount), style: const TextStyle(fontWeight: FontWeight.w700)),
+                  title: Text(fmtDay(inst.due)),
+                  trailing: Text(fmtMoney(inst.amount), style: const TextStyle(fontWeight: FontWeight.w700)),
                   onTap: () async {
-                    final d = await pickDay(context, _schedule[i].due);
-                    if (d != null) setState(() => _schedule[i].due = d);
+                    final d = await pickDay(context, inst.due);
+                    if (d != null) setState(() => _customDue[i] = d);
                   },
                 ),
             ]),

@@ -56,7 +56,11 @@ class _PayPickerState extends State<PayPicker> {
     final g = context.gymWatch;
     final accounts = g.has(Feature.walletQr) ? g.settings.activeAccounts : <PayAccount>[];
     final forMethod = accounts.where((a) => c.method == PayMethod.wallet ? a.type == 'wallet' : a.type == 'bank').toList();
-    if (c.needsAccount && (c.account == null || !forMethod.contains(c.account)) && forMethod.isNotEmpty) c.account = forMethod.first;
+    // الحسابات تُقرأ من الإعدادات كنسخ جديدة مع كل رسم، فالمقارنة بالمعرّف لا بالكائن
+    if (c.needsAccount && forMethod.isNotEmpty) {
+      final keep = c.account == null ? null : forMethod.where((a) => a.id == c.account!.id).firstOrNull;
+      c.account = keep ?? forMethod.first;
+    }
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Wrap(spacing: 8, runSpacing: 8, children: [
         for (final m in PayMethod.values.where((x) => x != PayMethod.online))
@@ -74,7 +78,7 @@ class _PayPickerState extends State<PayPicker> {
             for (final a in forMethod)
               ChoiceChip(
                 label: Text(a.name),
-                selected: identical(c.account, a) || c.account?.id == a.id,
+                selected: c.account?.id == a.id,
                 onSelected: (_) => _set(() => c.account = a),
               ),
           ]),
