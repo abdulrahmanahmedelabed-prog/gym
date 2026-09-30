@@ -45,6 +45,7 @@ enum Feature {
   staff,
   zatca,
   cloudSync,
+  accounting,
   // Pro
   autoSend,
   paymentGateways,
@@ -72,6 +73,7 @@ const featureTier = <Feature, Tier>{
   Feature.staff: Tier.plus,
   Feature.zatca: Tier.plus,
   Feature.cloudSync: Tier.plus,
+  Feature.accounting: Tier.plus,
   Feature.autoSend: Tier.pro,
   Feature.paymentGateways: Tier.pro,
   Feature.autoRenew: Tier.pro,
@@ -106,6 +108,7 @@ String featureName(Feature f) => switch (f) {
       Feature.auditLog => tr('سجل العمليات وموظفون بلا حد'),
       Feature.ownerSummary => tr('الملخص اليومي للمالك'),
       Feature.cloudSync => tr('المزامنة والنسخ السحابي (جهازان)'),
+      Feature.accounting => tr('المحاسبة والتدقيق المالي الآلي وإغلاق الصندوق'),
       Feature.multiDevice => tr('مزامنة حتى {n} أجهزة', {'n': proSyncDevices}),
     };
 

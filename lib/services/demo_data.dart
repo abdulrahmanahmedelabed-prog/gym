@@ -328,9 +328,9 @@ class DemoData {
       final day0 = DateTime(base.year, base.month, 5);
       if (day0.isAfter(today)) continue;
       expenses.addAll([
-        Expense(id: newId(), date: day0, category: 'إيجار', amount: 6000, by: owner.name),
-        Expense(id: newId(), date: DateTime(base.year, base.month, 28).isAfter(today) ? today : DateTime(base.year, base.month, 28), category: 'رواتب', amount: 9000, by: owner.name),
-        Expense(id: newId(), date: DateTime(base.year, base.month, 12), category: 'كهرباء ومياه', amount: 1200 + rnd.nextInt(600).toDouble(), by: owner.name),
+        Expense(id: newId(), date: day0, category: 'إيجار', amount: 6000, by: owner.name, method: 'transfer', account: 'بنك فلسطين'),
+        Expense(id: newId(), date: DateTime(base.year, base.month, 28).isAfter(today) ? today : DateTime(base.year, base.month, 28), category: 'رواتب', amount: 9000, by: owner.name, method: 'transfer', account: 'بنك فلسطين'),
+        Expense(id: newId(), date: DateTime(base.year, base.month, 12), category: 'كهرباء ومياه', amount: 1200 + rnd.nextInt(600).toDouble(), by: owner.name, method: 'wallet', account: 'جوال باي'),
         if (rnd.nextBool()) Expense(id: newId(), date: DateTime(base.year, base.month, 18), category: 'صيانة الأجهزة', amount: 300 + rnd.nextInt(700).toDouble(), by: owner.name),
         if (rnd.nextBool()) Expense(id: newId(), date: DateTime(base.year, base.month, 20), category: 'إعلانات', amount: 400 + rnd.nextInt(500).toDouble(), by: owner.name),
       ].where((e) => !e.date.isAfter(today)));

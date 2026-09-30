@@ -198,10 +198,12 @@ class BillingService {
   }
 
   /// إنشاء مصروف
-  Future<Expense> addExpense({required DateTime date, required String category, required double amount, String? note}) async {
+  Future<Expense> addExpense(
+      {required DateTime date, required String category, required double amount, String? note, String method = 'cash', String? account}) async {
     if (!d.can(Perm.expenses)) throw GymException(tr('ليست لديك صلاحية المصروفات'));
     if (amount <= 0) throw GymException(tr('اكتب مبلغاً صحيحاً'));
-    final e = Expense(id: newId(), date: date, category: category, amount: roundMoney(amount), note: note, by: d.userName);
+    final e = Expense(
+        id: newId(), date: date, category: category, amount: roundMoney(amount), note: note, by: d.userName, method: method, account: method == 'cash' ? null : account);
     await d.put(e);
     return e;
   }

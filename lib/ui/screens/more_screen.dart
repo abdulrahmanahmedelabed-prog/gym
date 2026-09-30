@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/i18n.dart';
 import '../../models/business.dart';
+import '../../services/accounting.dart';
 import '../../services/license.dart';
 import '../widgets/common.dart';
 import '../widgets/upgrade.dart';
@@ -14,6 +15,7 @@ import 'lock_screen.dart';
 import 'messages_screen.dart';
 import 'offers_screen.dart';
 import 'plans_screen.dart';
+import 'accounting_screen.dart';
 import 'reports_screen.dart';
 import 'settings_screen.dart';
 import 'shop_screen.dart';
@@ -26,6 +28,11 @@ class MoreScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final g = context.gymWatch;
     final pending = context.services.pendingManual;
+    // تنبيهات التدقيق المالي الحرجة والتحذيرات
+    final auditIssues = g.has(Feature.accounting) && g.can(Perm.reports)
+        ? context.services.auditFindings().where((f) => f.severity != Severity.info).length
+        : 0;
+    final auditBadge = auditIssues > 0 ? '$auditIssues' : null;
     final items = <(IconData, String, Color, Widget, bool, String?, Feature?)>[
       (Icons.chat_outlined, tr('الرسائل والتذكيرات'), const Color(0xFF16A34A), const MessagesScreen(), g.can(Perm.messages), pending > 0 ? '$pending' : null, null),
       (Icons.card_membership, tr('الباقات والأسعار'), const Color(0xFF2563EB), const PlansScreen(), true, null, null),
@@ -34,6 +41,7 @@ class MoreScreen extends StatelessWidget {
       (Icons.person_search_outlined, tr('العملاء المحتملون'), const Color(0xFFDB2777), const LeadsScreen(), g.can(Perm.members), null, Feature.leads),
       (Icons.shopping_bag_outlined, tr('المتجر والمخزون'), const Color(0xFFD97706), const ShopScreen(), g.can(Perm.sell), null, Feature.shop),
       (Icons.insights_outlined, tr('التقارير'), const Color(0xFF7C3AED), const ReportsScreen(), g.can(Perm.reports), null, Feature.fullReports),
+      (Icons.account_balance_outlined, tr('المحاسبة والتدقيق'), const Color(0xFF0F766E), const AccountingScreen(), g.can(Perm.reports), auditBadge, Feature.accounting),
       (Icons.badge_outlined, tr('الموظفون والمدربون'), const Color(0xFF0891B2), const StaffScreen(), g.can(Perm.staff), null, null),
       (Icons.tablet_android, tr('شاشة الدخول الذاتي'), const Color(0xFF0F766E), const KioskScreen(), g.can(Perm.checkin), null, Feature.kiosk),
       (Icons.history, tr('سجل العمليات'), const Color(0xFF64748B), const AuditScreen(), g.can(Perm.reports), null, Feature.auditLog),

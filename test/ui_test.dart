@@ -124,4 +124,32 @@ void main() {
     expect(find.text('ابدأ'), findsOneWidget);
     expect(find.text('جرّب ببيانات نادٍ تجريبي'), findsOneWidget);
   });
+
+  testWidgets('المحاسبة بالإنجليزية: إغلاق الصندوق من النافذة وقائمة الدخل', (t) async {
+    t.view.physicalSize = const Size(720, 1280);
+    t.view.devicePixelRatio = 2.0;
+    addTearDown(t.view.reset);
+    final (g, _) = (await t.runAsync(() => newGym(DateTime(2026, 9, 29, 18, 30))))!;
+    await t.runAsync(() => DemoData(g).generate(members: 20));
+    g.settings
+      ..onboarded = true
+      ..language = 'en';
+    g.applySettings();
+    addTearDown(() => I18n.lang = 'ar');
+    await t.pumpWidget(GymApp(gym: g, startBackground: false));
+    await pumpFor(t, 1000);
+    await tap(t, navItem('More'));
+    await tap(t, find.text('Accounting & audit').last);
+    await waitFor(t, find.text("Close today's cash drawer"));
+    await tap(t, find.widgetWithText(FilledButton, 'Close cash drawer'));
+    await t.enterText(find.widgetWithText(TextField, 'Counted amount'), '0');
+    await tap(t, find.widgetWithText(FilledButton, 'Save'));
+    await pumpFor(t, 1000);
+    expect(g.closes.all, hasLength(1));
+    await tap(t, find.widgetWithText(Tab, 'Income statement'));
+    expect(find.text('Net revenue'), findsOneWidget);
+    await tap(t, find.widgetWithText(Tab, 'Balances'));
+    expect(find.text('Where the money is now'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
 }

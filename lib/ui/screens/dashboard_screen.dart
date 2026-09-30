@@ -9,9 +9,11 @@ import '../../services/membership.dart';
 import '../../services/reports.dart';
 import '../theme.dart';
 import '../widgets/charts.dart';
+import '../../services/accounting.dart';
 import '../../services/license.dart';
 import '../widgets/upgrade.dart';
 import '../widgets/common.dart';
+import 'accounting_screen.dart';
 import 'leads_screen.dart';
 import 'lock_screen.dart';
 import 'member_detail_screen.dart';
@@ -49,6 +51,7 @@ class DashboardScreen extends StatelessWidget {
         .toList();
     final lowStock = g.products.all.where((p) => p.active && p.lowStock).toList();
     final canMoney = g.can(Perm.reports);
+    final auditIssues = canMoney && g.has(Feature.accounting) ? sv.auditFindings().where((f) => f.severity != Severity.info).toList() : const <Finding>[];
     final series = rep.dailyCollections(Range.lastDays(now, 14));
 
     final hour = now.hour;
@@ -168,11 +171,19 @@ class DashboardScreen extends StatelessWidget {
               ]),
             ),
           ),
-          if (pending > 0 || overdueInst.isNotEmpty || birthdays.isNotEmpty || followUps.isNotEmpty || lowStock.isNotEmpty)
+          if (pending > 0 || overdueInst.isNotEmpty || birthdays.isNotEmpty || followUps.isNotEmpty || lowStock.isNotEmpty || auditIssues.isNotEmpty)
             Section(
               title: tr('يحتاج انتباهك'),
               child: Card(
                 child: Column(children: [
+                  if (auditIssues.isNotEmpty)
+                    _AlertTile(
+                      icon: Icons.account_balance_outlined,
+                      color: auditIssues.any((f) => f.severity == Severity.critical) ? StatusColors.expired : StatusColors.expiring,
+                      title: tr('{n} ملاحظة في التدقيق المالي', {'n': auditIssues.length}),
+                      subtitle: auditIssues.first.title,
+                      onTap: () => context.push(const AccountingScreen()),
+                    ),
                   if (pending > 0)
                     _AlertTile(
                       icon: Icons.send,

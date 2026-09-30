@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nadi_gym/ui/screens/accounting_screen.dart';
 import 'package:nadi_gym/ui/screens/checkin_screen.dart';
 import 'package:nadi_gym/ui/screens/finance_screen.dart';
 import 'package:nadi_gym/ui/screens/member_detail_screen.dart';
@@ -108,6 +109,21 @@ Future<void> tour(WidgetTester t, Snap snap) async {
   await tap(t, more('التقارير'));
   await pumpFor(t, 800);
   await snap('13_reports');
+  await back(t);
+
+  // المحاسبة والتدقيق: كل تبويب مع التمرير لآخره
+  await tap(t, more('المحاسبة والتدقيق'));
+  await waitFor(t, find.byType(AccountingScreen));
+  await pumpFor(t, 800);
+  await snap('20_accounting_audit');
+  final acct = find.byType(AccountingScreen);
+  for (final (tab, name) in [('قائمة الدخل', '21_income_statement'), ('الأرصدة', '22_balances'), ('دفتر اليومية', '23_journal')]) {
+    await tap(t, find.descendant(of: acct, matching: find.widgetWithText(Tab, tab)));
+    await pumpFor(t, 800);
+    await snap(name);
+    await t.fling(find.descendant(of: acct, matching: find.byType(Scrollable)).last, const Offset(0, -3000), 3000);
+    await pumpFor(t, 800);
+  }
   await back(t);
 
   await tap(t, more('الحصص والحجوزات'));

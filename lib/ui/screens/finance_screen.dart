@@ -5,6 +5,7 @@ import '../../core/i18n.dart';
 import '../../core/money.dart';
 import '../../models/billing.dart';
 import '../../models/business.dart';
+import '../../models/settings.dart';
 import '../../services/reports.dart';
 import '../theme.dart';
 import '../../services/license.dart';
@@ -378,6 +379,8 @@ Future<void> showExpenseDialog(BuildContext context) async {
   var date = g.today;
   final amount = TextEditingController();
   final note = TextEditingController();
+  final accounts = context.gym.settings.activeAccounts;
+  PayAccount? from;
   final ok = await showDialog<bool>(
     context: context,
     builder: (c) => StatefulBuilder(
@@ -394,6 +397,14 @@ Future<void> showExpenseDialog(BuildContext context) async {
           TextField(controller: amount, autofocus: true, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: tr('المبلغ'))),
           const SizedBox(height: 12),
           TextField(controller: note, decoration: InputDecoration(labelText: tr('ملاحظة'))),
+          const SizedBox(height: 12),
+          // من أين دُفع: لمطابقة الصندوق وأرصدة الحسابات
+          Align(alignment: AlignmentDirectional.centerStart, child: Text(tr('دُفع من'), style: const TextStyle(fontWeight: FontWeight.w700))),
+          const SizedBox(height: 6),
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            ChoiceChip(label: Text(tr('الصندوق (نقداً)')), selected: from == null, onSelected: (_) => set(() => from = null)),
+            for (final a in accounts) ChoiceChip(label: Text(a.name), selected: from?.id == a.id, onSelected: (_) => set(() => from = a)),
+          ]),
           ListTile(
             contentPadding: EdgeInsets.zero,
             title: Text(tr('التاريخ')),
@@ -415,6 +426,12 @@ Future<void> showExpenseDialog(BuildContext context) async {
   await runAction(
       context,
       () => context.services.billing
-          .addExpense(date: date, category: cat, amount: parseAmount(amount.text) ?? 0, note: note.text.trim().isEmpty ? null : note.text.trim()),
+          .addExpense(
+              date: date,
+              category: cat,
+              amount: parseAmount(amount.text) ?? 0,
+              note: note.text.trim().isEmpty ? null : note.text.trim(),
+              method: from == null ? 'cash' : (from!.type == 'bank' ? 'transfer' : 'wallet'),
+              account: from?.name),
       success: tr('تم الحفظ'));
 }

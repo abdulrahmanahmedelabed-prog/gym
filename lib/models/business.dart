@@ -1,4 +1,5 @@
 import '../core/dates.dart';
+import '../core/money.dart';
 import 'base.dart';
 import 'member.dart';
 
@@ -343,7 +344,13 @@ class Expense implements Entity {
   String? note;
   String? by;
 
-  Expense({required this.id, required this.date, required this.category, required this.amount, this.note, this.by});
+  /// من أين دُفع: cash (من الصندوق) / transfer / wallet / card — لمطابقة الصندوق والحسابات
+  String method;
+
+  /// اسم الحساب أو المحفظة إن لم يكن نقداً
+  String? account;
+
+  Expense({required this.id, required this.date, required this.category, required this.amount, this.note, this.by, this.method = 'cash', this.account});
 
   @override
   Map<String, Object?> toMap() => compact({
@@ -353,6 +360,8 @@ class Expense implements Entity {
         'amount': amount,
         'note': note,
         'by': by,
+        'method': method == 'cash' ? null : method,
+        'account': account,
       });
 
   factory Expense.fromMap(Map<String, Object?> m) => Expense(
@@ -362,6 +371,45 @@ class Expense implements Entity {
         amount: asDouble(m['amount']),
         note: asStrOrNull(m['note']),
         by: asStrOrNull(m['by']),
+        method: asStr(m['method'], 'cash'),
+        account: asStrOrNull(m['account']),
+      );
+}
+
+/// إغلاق الصندوق اليومي: المتوقع حسب البرنامج مقابل المعدود فعلاً، والفرق يُسجَّل ولا يُعدَّل
+class CashClose implements Entity {
+  @override
+  final String id;
+  final DateTime day;
+  final DateTime time;
+  final String? by;
+  final double expected;
+  final double counted;
+  final String? note;
+
+  CashClose({required this.id, required this.day, required this.time, this.by, required this.expected, required this.counted, this.note});
+
+  double get variance => roundMoney(counted - expected);
+
+  @override
+  Map<String, Object?> toMap() => compact({
+        'id': id,
+        'day': dayKey(day),
+        'time': time.toIso8601String(),
+        'by': by,
+        'expected': expected,
+        'counted': counted,
+        'note': note,
+      });
+
+  factory CashClose.fromMap(Map<String, Object?> m) => CashClose(
+        id: asStr(m['id']),
+        day: parseDay(asStr(m['day'])),
+        time: asTime(m['time']) ?? DateTime(2000),
+        by: asStrOrNull(m['by']),
+        expected: asDouble(m['expected']),
+        counted: asDouble(m['counted']),
+        note: asStrOrNull(m['note']),
       );
 }
 

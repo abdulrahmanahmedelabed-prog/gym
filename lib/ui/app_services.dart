@@ -12,6 +12,7 @@ import '../data/gym_data.dart';
 import '../models/activity.dart';
 import '../models/billing.dart';
 import '../models/member.dart';
+import '../services/accounting.dart';
 import '../services/billing.dart';
 import '../services/checkin.dart';
 import '../services/classes.dart';
@@ -36,6 +37,19 @@ class AppServices {
   late final dispatcher = Dispatcher(d, pdfFor: _pdfForInvoice);
   late final payLinks = PaymentLinkService(d);
   late final backup = BackupService(d);
+  late final accounting = Accounting(d);
+
+  int _auditVersion = -1;
+  List<Finding> _audit = const [];
+
+  /// نتائج التدقيق المالي الآلي (تُحسب مرة لكل تغيير في البيانات)
+  List<Finding> auditFindings() {
+    if (_auditVersion != d.version) {
+      _audit = accounting.audit();
+      _auditVersion = d.version;
+    }
+    return _audit;
+  }
 
   Timer? _timer;
   bool _busy = false;
