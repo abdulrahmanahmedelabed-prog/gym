@@ -10,6 +10,7 @@ import '../models/business.dart';
 import '../models/member.dart';
 import '../models/settings.dart';
 import '../models/subscription.dart';
+import 'accounting.dart';
 import 'license.dart';
 import 'membership.dart';
 import 'reports.dart';
@@ -228,7 +229,14 @@ class ReminderEngine {
           name: tr('صاحب النادي'),
           kind: Rk.ownerDaily,
           body: renderTemplate(s.template(Rk.ownerDaily),
-              {'gym': s.gymName, 'date': dayKey(y), 'summary': Reports(d).dailySummaryText(y)}),
+              {
+                'gym': s.gymName,
+                'date': dayKey(y),
+                'summary': [
+                  Reports(d).dailySummaryText(y),
+                  if (d.has(Feature.accounting)) Accounting(d).dailyAuditText(y),
+                ].join('\n'),
+              }),
           dedupKey: 'own:${dayKey(y)}'));
     }
     return out;

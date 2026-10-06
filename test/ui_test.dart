@@ -4,6 +4,8 @@ import 'package:nadi_gym/core/i18n.dart';
 import 'package:nadi_gym/services/demo_data.dart';
 import 'package:nadi_gym/services/sync.dart';
 import 'package:nadi_gym/ui/app.dart';
+import 'package:nadi_gym/models/business.dart';
+import 'package:nadi_gym/ui/screens/accounting_screen.dart';
 import 'package:nadi_gym/ui/screens/sync_screen.dart';
 
 import '../integration_test/tour.dart';
@@ -140,16 +142,52 @@ void main() {
     await pumpFor(t, 1000);
     await tap(t, navItem('More'));
     await tap(t, find.text('Accounting & audit').last);
-    await waitFor(t, find.text("Close today's cash drawer"));
+    await waitFor(t, find.byType(AccountingScreen));
+    await t.scrollUntilVisible(find.widgetWithText(FilledButton, 'Close cash drawer'), 300,
+        scrollable: find
+            .descendant(of: find.descendant(of: find.byType(AccountingScreen), matching: find.byType(ListView)).first, matching: find.byType(Scrollable))
+            .first);
     await tap(t, find.widgetWithText(FilledButton, 'Close cash drawer'));
     await t.enterText(find.widgetWithText(TextField, 'Counted amount'), '0');
     await tap(t, find.widgetWithText(FilledButton, 'Save'));
     await pumpFor(t, 1000);
     expect(g.closes.all, hasLength(1));
     await tap(t, find.widgetWithText(Tab, 'Income statement'));
-    expect(find.text('Net revenue'), findsOneWidget);
+    expect(find.text('Last 6 months'), findsOneWidget);
     await tap(t, find.widgetWithText(Tab, 'Balances'));
     expect(find.text('Where the money is now'), findsOneWidget);
+    // حركة مال: إيداع نقد الصندوق في البنك
+    final before = g.moves.all.length;
+    await tap(t, find.text('Money move'));
+    await t.enterText(find.widgetWithText(TextField, 'Amount'), '100');
+    await tap(t, find.widgetWithText(FilledButton, 'Save'));
+    await pumpFor(t, 1000);
+    expect(g.moves.all.length, before + 1);
+    // كشف حساب الصندوق
+    await tap(t, find.text('Cash drawer').first);
+    await waitFor(t, find.byType(LedgerScreen));
+    expect(find.text('Current balance'), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
+
+  testWidgets('إغلاق صندوق أعمى لموظف الاستقبال: لا يرى المبلغ المتوقع', (t) async {
+    t.view.physicalSize = const Size(720, 1280);
+    t.view.devicePixelRatio = 2.0;
+    addTearDown(t.view.reset);
+    final (g, _) = (await t.runAsync(() => newGym(DateTime(2026, 9, 29, 18, 30))))!;
+    await t.runAsync(() => DemoData(g).generate(members: 20));
+    g.settings.onboarded = true;
+    g.user = Staff(id: 'r', name: 'استقبال', role: Role.reception);
+    await t.pumpWidget(GymApp(gym: g, startBackground: false));
+    await pumpFor(t, 1000);
+    await tap(t, navItem('المالية'));
+    await tap(t, find.byTooltip('إغلاق الصندوق'));
+    expect(find.text('المبلغ المعدود'), findsOneWidget);
+    expect(find.text('المفروض أن يكون في الصندوق'), findsNothing);
+    await t.enterText(find.widgetWithText(TextField, 'المبلغ المعدود'), '500');
+    await tap(t, find.widgetWithText(FilledButton, 'حفظ'));
+    await pumpFor(t, 1000);
+    expect(g.closes.all.single.by, 'استقبال');
     expect(t.takeException(), isNull);
   });
 }

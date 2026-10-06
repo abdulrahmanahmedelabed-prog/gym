@@ -34,6 +34,7 @@ class InvoiceScreen extends StatelessWidget {
       InvoiceStatus.partial => (tr('مدفوعة جزئياً'), StatusColors.expiring),
       InvoiceStatus.unpaid => (tr('غير مدفوعة'), StatusColors.expired),
       InvoiceStatus.voided => (tr('ملغاة'), StatusColors.none),
+      InvoiceStatus.writtenOff => (tr('دين معدوم'), StatusColors.none),
     };
 
     return Scaffold(
@@ -57,6 +58,8 @@ class InvoiceScreen extends StatelessWidget {
             itemBuilder: (_) => [
               if (!inv.voided && inv.paid > 0 && g.can(Perm.refund))
                 PopupMenuItem(value: 'refund', child: ListTile(leading: const Icon(Icons.undo), title: Text(tr('استرداد مبلغ')))),
+              if (!inv.voided && inv.balance > 0 && g.can(Perm.refund) && g.has(Feature.accounting))
+                PopupMenuItem(value: 'writeoff', child: ListTile(leading: const Icon(Icons.money_off), title: Text(tr('إعدام الدين')))),
               if (!inv.voided && g.can(Perm.refund))
                 PopupMenuItem(value: 'void', child: ListTile(leading: Icon(Icons.block, color: context.colors.error), title: Text(tr('إلغاء الفاتورة')))),
               PopupMenuItem(value: 'text', child: ListTile(leading: const Icon(Icons.copy), title: Text(tr('نسخ نص الفاتورة')))),
@@ -152,6 +155,7 @@ class InvoiceScreen extends StatelessWidget {
               if (inv.taxRate > 0) InfoRow('${tr('الضريبة')} ${fmtNum(inv.taxRate * 100)}%', fmtMoney(inv.tax)),
               InfoRow(tr('الإجمالي'), fmtMoney(inv.total), bold: true),
               InfoRow(tr('المدفوع'), fmtMoney(inv.paid), color: StatusColors.active),
+              if (inv.writtenOff > 0) InfoRow(tr('دين معدوم'), fmtMoney(inv.writtenOff), color: StatusColors.none),
               if (inv.balance > 0) InfoRow(tr('المتبقي'), fmtMoney(inv.balance), bold: true, color: StatusColors.expired),
             ]),
           ),
@@ -251,6 +255,10 @@ class InvoiceScreen extends StatelessWidget {
         final reason = await askText(context, tr('سبب الاسترداد'));
         if (reason == null || !context.mounted) return;
         await runAction(context, () => sv.billing.refund(inv, parseAmount(a) ?? 0, PayMethod.cash, reason), success: tr('تم الاسترداد'));
+      case 'writeoff':
+        final reason = await askText(context, tr('سبب إعدام الدين ({a})', {'a': fmtMoney(inv.balance)}));
+        if (reason == null || !context.mounted) return;
+        await runAction(context, () => sv.billing.writeOff(inv, reason), success: tr('سُجّل الدين معدوماً'));
       case 'void':
         final reason = await askText(context, tr('سبب إلغاء الفاتورة'));
         if (reason == null || !context.mounted) return;

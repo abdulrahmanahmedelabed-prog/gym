@@ -102,7 +102,7 @@ class PaymentLink {
       );
 }
 
-enum InvoiceStatus { paid, partial, unpaid, voided }
+enum InvoiceStatus { paid, partial, unpaid, voided, writtenOff }
 
 class Invoice implements Entity {
   @override
@@ -120,6 +120,9 @@ class Invoice implements Entity {
   List<PaymentLink> links;
   bool voided;
   String? voidReason;
+  DateTime? voidedAt;
+  double writtenOff; // دين معدوم: مبلغ تنازل عنه النادي بقرار (لا يُحصّل ولا يُذكَّر به)
+  DateTime? writtenOffAt;
   String? notes;
   String? createdBy;
   String? pendingPlanId; // فاتورة تجديد: يُنشأ الاشتراك تلقائياً عند اكتمال دفعها
@@ -139,6 +142,9 @@ class Invoice implements Entity {
     List<PaymentLink>? links,
     this.voided = false,
     this.voidReason,
+    this.voidedAt,
+    this.writtenOff = 0,
+    this.writtenOffAt,
     this.notes,
     this.createdBy,
     this.pendingPlanId,
@@ -156,16 +162,19 @@ class Invoice implements Entity {
         : roundMoney(taxable * taxRate);
   }
 
-  double get total => voided ? 0 : roundMoney(taxInclusive ? taxable : taxable + tax);
+  double get total => voided ? 0 : grossTotal;
+
+  /// الإجمالي حسب البنود حتى لو أُلغيت الفاتورة (لقيد الإلغاء في المحاسبة)
+  double get grossTotal => roundMoney(taxInclusive ? taxable : taxable + tax);
 
   /// المبلغ قبل الضريبة
   double get net => roundMoney(total - tax);
 
-  double get balance => voided ? 0 : roundMoney(total - paid);
+  double get balance => voided ? 0 : roundMoney(total - paid - writtenOff);
 
   InvoiceStatus get status {
     if (voided) return InvoiceStatus.voided;
-    if (balance <= 0.0001) return InvoiceStatus.paid;
+    if (balance <= 0.0001) return writtenOff > 0 ? InvoiceStatus.writtenOff : InvoiceStatus.paid;
     if (paid > 0) return InvoiceStatus.partial;
     return InvoiceStatus.unpaid;
   }
@@ -209,6 +218,9 @@ class Invoice implements Entity {
         'links': links.isEmpty ? null : links.map((l) => l.toMap()).toList(),
         'voided': voided ? true : null,
         'voidReason': voidReason,
+        'voidedAt': voidedAt?.toIso8601String(),
+        'writtenOff': writtenOff == 0 ? null : writtenOff,
+        'writtenOffAt': writtenOffAt?.toIso8601String(),
         'notes': notes,
         'createdBy': createdBy,
         'pendingPlanId': pendingPlanId,
@@ -229,6 +241,9 @@ class Invoice implements Entity {
         links: asMapList(m['links']).map(PaymentLink.fromMap).toList(),
         voided: asBool(m['voided']),
         voidReason: asStrOrNull(m['voidReason']),
+        voidedAt: asTime(m['voidedAt']),
+        writtenOff: asDouble(m['writtenOff']),
+        writtenOffAt: asTime(m['writtenOffAt']),
         notes: asStrOrNull(m['notes']),
         createdBy: asStrOrNull(m['createdBy']),
         pendingPlanId: asStrOrNull(m['pendingPlanId']),

@@ -413,6 +413,79 @@ class CashClose implements Entity {
       );
 }
 
+/// حركة مال لا هي بيع ولا مصروف: إيداع النقد في البنك، سحب المالك، إيداع رأس مال، رصيد افتتاحي، توريد الضريبة.
+/// from / to أسماء الحسابات المالية (الصندوق، أو اسم المحفظة أو البنك)
+class MoneyMove implements Entity {
+  static const kinds = ['transfer', 'draw', 'capital', 'opening', 'vat'];
+
+  @override
+  final String id;
+  final DateTime date;
+  final String kind;
+  final double amount;
+  final String? from;
+  final String? to;
+  final String? note;
+  final String? by;
+
+  MoneyMove({required this.id, required this.date, required this.kind, required this.amount, this.from, this.to, this.note, this.by});
+
+  @override
+  Map<String, Object?> toMap() => compact({
+        'id': id,
+        'date': date.toIso8601String(),
+        'kind': kind,
+        'amount': amount,
+        'from': from,
+        'to': to,
+        'note': note,
+        'by': by,
+      });
+
+  factory MoneyMove.fromMap(Map<String, Object?> m) => MoneyMove(
+        id: asStr(m['id']),
+        date: asTime(m['date']) ?? DateTime(2000),
+        kind: asStr(m['kind'], 'transfer'),
+        amount: asDouble(m['amount']),
+        from: asStrOrNull(m['from']),
+        to: asStrOrNull(m['to']),
+        note: asStrOrNull(m['note']),
+        by: asStrOrNull(m['by']),
+      );
+}
+
+/// إقفال فترة محاسبية: لا تُضاف ولا تُحذف عمليات بتاريخ قبلها، ويُحفظ ميزان المراجعة يوم الإقفال
+/// ليكشف التدقيق أي تغيير لاحق (من جهاز آخر أو استعادة نسخة قديمة).
+class PeriodLock implements Entity {
+  @override
+  final String id;
+  final DateTime until;
+  final DateTime time;
+  final String? by;
+  final Map<String, double> snapshot;
+
+  PeriodLock({required this.id, required this.until, required this.time, this.by, required this.snapshot});
+
+  @override
+  Map<String, Object?> toMap() => compact({
+        'id': id,
+        'until': dayKey(until),
+        'time': time.toIso8601String(),
+        'by': by,
+        'snapshot': snapshot,
+      });
+
+  factory PeriodLock.fromMap(Map<String, Object?> m) => PeriodLock(
+        id: asStr(m['id']),
+        until: parseDay(asStr(m['until'])),
+        time: asTime(m['time']) ?? DateTime(2000),
+        by: asStrOrNull(m['by']),
+        snapshot: {
+          for (final e in ((m['snapshot'] as Map?) ?? const {}).entries) '${e.key}': asDouble(e.value),
+        },
+      );
+}
+
 /// كوبون خصم (عروض رمضان، الطلاب، الشركات...)
 class Coupon implements Entity {
   @override

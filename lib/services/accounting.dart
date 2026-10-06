@@ -16,7 +16,7 @@ import 'reports.dart';
 // فلا يمكن أن تختلف الدفاتر عن الفواتير والدفعات. منها تُبنى كل القوائم المالية.
 // =============================================================================
 
-enum AcctType { asset, liability, revenue, contra, expense }
+enum AcctType { asset, liability, equity, revenue, contra, expense }
 
 class Accounts {
   static const cash = 'الصندوق (نقد)';
@@ -28,6 +28,10 @@ class Accounts {
   static const discounts = 'خصومات ممنوحة';
   static const vat = 'ضريبة القيمة المضافة المستحقة';
   static const rounding = 'فروقات تقريب';
+  static const capital = 'رأس مال المالك';
+  static const drawings = 'مسحوبات المالك';
+  static const opening = 'أرصدة افتتاحية';
+  static const badDebtCategory = 'ديون معدومة';
 
   static String revenue(ItemKind k) => switch (k) {
         ItemKind.subscription => 'إيرادات الاشتراكات',
@@ -68,7 +72,7 @@ class JEntry {
   final DateTime date;
   final String ref; // رقم الفاتورة أو الإيصال
   final String text;
-  final String source; // invoice / payment / expense
+  final String source; // invoice / payment / expense / move
   final String sourceId;
   final List<JLine> lines;
   JEntry(this.date, this.ref, this.text, this.source, this.sourceId, this.lines);
@@ -122,8 +126,44 @@ class CashDay {
   final double cashRefunds;
   final double cashExpenses;
   final Map<String, double> otherAccounts; // المحافظ والبنوك في نفس اليوم (للمطابقة مع كشوفها)
-  CashDay(this.day, this.cashIn, this.cashRefunds, this.cashExpenses, this.otherAccounts);
-  double get expected => roundMoney(cashIn - cashRefunds - cashExpenses);
+  final double movesIn; // إيداع من المالك في الصندوق
+  final double movesOut; // إيداع النقد في البنك، سحب المالك، توريد الضريبة نقداً
+  CashDay(this.day, this.cashIn, this.cashRefunds, this.cashExpenses, this.otherAccounts, {this.movesIn = 0, this.movesOut = 0});
+  double get expected => roundMoney(cashIn - cashRefunds - cashExpenses + movesIn - movesOut);
+}
+
+/// الميزانية العمومية (المركز المالي) في يوم: ما يملكه النادي = ما عليه + حق المالك
+class BalanceSheet {
+  final DateTime day;
+  final Map<String, double> assets;
+  final Map<String, double> liabilities;
+  final Map<String, double> equity; // رأس المال والمسحوبات والأرصدة الافتتاحية
+  final double retained; // الأرباح المتراكمة
+  BalanceSheet(this.day, this.assets, this.liabilities, this.equity, this.retained);
+
+  double get totalAssets => roundMoney(assets.values.fold(0.0, (s, v) => s + v));
+  double get totalLiabilities => roundMoney(liabilities.values.fold(0.0, (s, v) => s + v));
+  double get totalEquity => roundMoney(equity.values.fold(0.0, (s, v) => s + v) + retained);
+  bool get balanced => (totalAssets - totalLiabilities - totalEquity).abs() < 0.05;
+}
+
+/// سطر في كشف حساب
+class LedgerLine {
+  final DateTime date;
+  final String ref;
+  final String text;
+  final double debit;
+  final double credit;
+  final double balance;
+  const LedgerLine(this.date, this.ref, this.text, this.debit, this.credit, this.balance);
+}
+
+class MonthFigures {
+  final DateTime month;
+  final double revenue; // صافي الإيرادات بعد الخصومات
+  final double expenses;
+  MonthFigures(this.month, this.revenue, this.expenses);
+  double get profit => roundMoney(revenue - expenses);
 }
 
 enum Severity { critical, warning, info }
@@ -159,37 +199,84 @@ class Accounting {
   // دفتر اليومية
   // ---------------------------------------------------------------------------
 
-  JEntry? invoiceEntry(Invoice inv) {
-    if (inv.voided || inv.items.isEmpty) return null;
+  /// أثر مجموعة بنود الفاتورة على كل حساب (مدين موجب، دائن سالب). المجموع صفر دائماً.
+  Map<String, double> _invoiceEffect(Invoice inv, List<InvoiceItem> items) {
+    final tmp = Invoice(
+        id: inv.id, number: inv.number, date: inv.date, items: items, discount: inv.discount, taxRate: inv.taxRate, taxInclusive: inv.taxInclusive);
     final f = inv.taxInclusive && inv.taxRate > 0 ? 1 / (1 + inv.taxRate) : 1.0;
-    final rev = <String, double>{};
-    for (final i in inv.items) {
+    final out = <String, double>{};
+    void add(String a, double v) => out[a] = roundMoney((out[a] ?? 0) + v);
+    var revSum = 0.0;
+    for (final i in items) {
       final k = Accounts.revenue(i.total < 0 ? ItemKind.subscription : i.kind);
-      rev[k] = roundMoney((rev[k] ?? 0) + i.total * f);
+      final v = roundMoney(i.total * f);
+      add(k, -v);
+      revSum += v;
       _types[k] = AcctType.revenue;
     }
     final disc = roundMoney(inv.discount * f);
-    final total = inv.total;
-    final revSum = roundMoney(rev.values.fold(0.0, (s, v) => s + v));
+    final total = tmp.total;
+    add(Accounts.receivable, total);
+    if (disc != 0) add(Accounts.discounts, disc);
     // الضريبة هي الفرق الذي يوازن القيد (فلا يبقى فرق تقريب)
-    final diff = roundMoney(total + disc - revSum);
-    final lines = <JLine>[
-      if (total > 0) JLine(Accounts.receivable, debit: total),
-      if (total < 0) JLine(Accounts.receivable, credit: -total),
-      if (disc > 0) JLine(Accounts.discounts, debit: disc),
-      for (final e in rev.entries)
-        if (e.value > 0) JLine(e.key, credit: e.value) else if (e.value < 0) JLine(e.key, debit: -e.value),
-    ];
-    if (diff.abs() >= 0.005) {
-      final acc = inv.taxRate > 0 ? Accounts.vat : Accounts.rounding;
-      lines.add(diff > 0 ? JLine(acc, credit: diff) : JLine(acc, debit: -diff));
-    }
+    final diff = roundMoney(total + disc - roundMoney(revSum));
+    if (diff.abs() >= 0.005) add(inv.taxRate > 0 ? Accounts.vat : Accounts.rounding, -diff);
     _types[Accounts.receivable] = AcctType.asset;
     _types[Accounts.discounts] = AcctType.contra;
     _types[Accounts.vat] = AcctType.liability;
     _types[Accounts.rounding] = AcctType.expense;
+    return out;
+  }
+
+  List<JLine> _lines(Map<String, double> effect, String balancing) {
+    final lines = <JLine>[];
+    var dr = 0.0, cr = 0.0;
+    for (final e in effect.entries) {
+      final v = roundMoney(e.value);
+      if (v > 0) {
+        lines.add(JLine(e.key, debit: v));
+        dr += v;
+      } else if (v < 0) {
+        lines.add(JLine(e.key, credit: -v));
+        cr += -v;
+      }
+    }
+    final res = roundMoney(dr - cr);
+    if (res.abs() >= 0.005) lines.add(res > 0 ? JLine(balancing, credit: res) : JLine(balancing, debit: -res));
+    return lines;
+  }
+
+  /// قيود الفاتورة، كلٌّ بتاريخ حدوثه: البيع يوم الفاتورة، إلغاء الاشتراك يوم إلغائه، إلغاء الفاتورة يوم إلغائها،
+  /// وإعدام الدين يوم إعدامه. فلا يتغير ما سُجّل في شهر سابق مهما حدث بعده.
+  List<JEntry> invoiceEntries(Invoice inv) {
+    if (inv.items.isEmpty) return const [];
+    if (inv.voided && inv.voidedAt == null) return const []; // إلغاء قديم بلا تاريخ: لا قيد
     final who = inv.customerName ?? d.members[inv.memberId]?.name ?? '';
-    return JEntry(inv.date, inv.number, tr('فاتورة {n} — {w}', {'n': inv.number, 'w': who}), 'invoice', inv.id, lines);
+    final bal = inv.taxRate > 0 ? Accounts.vat : Accounts.rounding;
+    DateTime? creditDate(InvoiceItem i) => i.total < 0 && i.refId != null ? d.subs[i.refId]?.cancelledAt : null;
+    final credits = [for (final i in inv.items) if (creditDate(i) != null) i]..sort((a, b) => creditDate(a)!.compareTo(creditDate(b)!));
+    var current = [for (final i in inv.items) if (creditDate(i) == null) i];
+    var effect = _invoiceEffect(inv, current);
+    final out = <JEntry>[
+      JEntry(inv.date, inv.number, tr('فاتورة {n} — {w}', {'n': inv.number, 'w': who}), 'invoice', inv.id, _lines(effect, bal)),
+    ];
+    for (final c in credits) {
+      current = [...current, c];
+      final next = _invoiceEffect(inv, current);
+      final delta = {for (final k in {...effect.keys, ...next.keys}) k: roundMoney((next[k] ?? 0) - (effect[k] ?? 0))};
+      out.add(JEntry(creditDate(c)!, inv.number, tr('إلغاء اشتراك — فاتورة {n} — {w}', {'n': inv.number, 'w': who}), 'invoice', inv.id, _lines(delta, bal)));
+      effect = next;
+    }
+    if (inv.voided) {
+      out.add(JEntry(inv.voidedAt!, inv.number, tr('إلغاء الفاتورة {n} — {w}', {'n': inv.number, 'w': who}), 'invoice', inv.id,
+          _lines({for (final e in effect.entries) e.key: -e.value}, bal)));
+    } else if (inv.writtenOff > 0.001) {
+      final exp = Accounts.expense(Accounts.badDebtCategory);
+      _types[exp] = AcctType.expense;
+      out.add(JEntry(inv.writtenOffAt ?? inv.date, inv.number, tr('إعدام دين — فاتورة {n} — {w}', {'n': inv.number, 'w': who}), 'invoice', inv.id,
+          [JLine(exp, debit: inv.writtenOff), JLine(Accounts.receivable, credit: inv.writtenOff)]));
+    }
+    return out.where((e) => e.lines.isNotEmpty).toList();
   }
 
   JEntry paymentEntry(Payment p) {
@@ -216,13 +303,40 @@ class Accounting {
         [JLine(exp, debit: e.amount), JLine(acc, credit: e.amount)]);
   }
 
+  JEntry moveEntry(MoneyMove m) {
+    final a = m.amount;
+    final lines = switch (m.kind) {
+      'transfer' => [JLine(m.to!, debit: a), JLine(m.from!, credit: a)],
+      'draw' => [JLine(Accounts.drawings, debit: a), JLine(m.from!, credit: a)],
+      'capital' => [JLine(m.to!, debit: a), JLine(Accounts.capital, credit: a)],
+      'opening' => [JLine(m.to!, debit: a), JLine(Accounts.opening, credit: a)],
+      _ => [JLine(Accounts.vat, debit: a), JLine(m.from!, credit: a)], // vat: توريد الضريبة
+    };
+    for (final x in [m.from, m.to]) {
+      if (x != null) _types[x] = AcctType.asset;
+    }
+    _types[Accounts.drawings] = AcctType.equity;
+    _types[Accounts.capital] = AcctType.equity;
+    _types[Accounts.opening] = AcctType.equity;
+    _types[Accounts.vat] = AcctType.liability;
+    return JEntry(m.date, '', '${moveKindName(m.kind)}${m.note == null ? '' : ' — ${m.note}'}', 'move', m.id, lines);
+  }
+
+  static String moveKindName(String k) => switch (k) {
+        'transfer' => tr('تحويل بين الحسابات'),
+        'draw' => tr('سحب المالك'),
+        'capital' => tr('إيداع من المالك'),
+        'opening' => tr('رصيد افتتاحي'),
+        _ => tr('توريد الضريبة'),
+      };
+
   /// كل القيود (أو قيود فترة) مرتبة زمنياً
   List<JEntry> journal([Range? r]) {
     final out = <JEntry>[];
     for (final inv in d.invoices.all) {
-      if (r != null && !r.has(inv.date)) continue;
-      final e = invoiceEntry(inv);
-      if (e != null) out.add(e);
+      for (final e in invoiceEntries(inv)) {
+        if (r == null || r.has(e.date)) out.add(e);
+      }
     }
     for (final p in d.payments.all) {
       if (r != null && !r.has(p.date)) continue;
@@ -231,6 +345,10 @@ class Accounting {
     for (final x in d.expenses.all) {
       if (r != null && !r.has(x.date)) continue;
       out.add(expenseEntry(x));
+    }
+    for (final m in d.moves.all) {
+      if (r != null && !r.has(m.date)) continue;
+      out.add(moveEntry(m));
     }
     out.sort((a, b) {
       final c = a.date.compareTo(b.date);
@@ -283,6 +401,7 @@ class Accounting {
         case AcctType.liability:
           if (t.account == Accounts.vat) vat += t.credit - t.debit;
         case AcctType.asset:
+        case AcctType.equity:
           break;
       }
     }
@@ -301,6 +420,67 @@ class Accounting {
       if (typeOf(e.key) == AcctType.asset && e.key != Accounts.receivable) out[e.key] = e.value;
     }
     return out;
+  }
+
+  /// الميزانية العمومية في يوم
+  BalanceSheet balanceSheet(DateTime day) {
+    final assets = <String, double>{}, liab = <String, double>{}, eq = <String, double>{};
+    var retained = 0.0;
+    for (final t in trialBalance(Range(DateTime(1990), day))) {
+      final b = t.balance;
+      if (b.abs() < 0.005) continue;
+      switch (t.type) {
+        case AcctType.asset:
+          assets[t.account] = b;
+        case AcctType.liability:
+          liab[t.account] = roundMoney(-b);
+        case AcctType.equity:
+          eq[t.account] = roundMoney(-b);
+        case AcctType.revenue:
+        case AcctType.contra:
+        case AcctType.expense:
+          retained -= b;
+      }
+    }
+    return BalanceSheet(dateOnly(day), assets, liab, eq, roundMoney(retained));
+  }
+
+  /// كشف حساب: كل حركة على الحساب مع الرصيد بعدها
+  List<LedgerLine> ledger(String account) {
+    final out = <LedgerLine>[];
+    var bal = 0.0;
+    final credit = {AcctType.liability, AcctType.equity, AcctType.revenue}.contains(typeOf(account));
+    for (final e in journal()) {
+      for (final l in e.lines.where((l) => l.account == account)) {
+        bal = roundMoney(bal + (credit ? l.credit - l.debit : l.debit - l.credit));
+        out.add(LedgerLine(e.date, e.ref, e.text, l.debit, l.credit, bal));
+      }
+    }
+    return out;
+  }
+
+  /// الإيرادات والمصروفات والربح لآخر [n] أشهر (الأقدم أولاً)
+  List<MonthFigures> trend(int n) {
+    final today = d.today;
+    final first = DateTime(today.year, today.month - n + 1, 1);
+    final rev = List.filled(n, 0.0), exp = List.filled(n, 0.0);
+    for (final e in journal(Range(first, today))) {
+      final i = (e.date.year - first.year) * 12 + e.date.month - first.month;
+      if (i < 0 || i >= n) continue;
+      for (final l in e.lines) {
+        switch (typeOf(l.account)) {
+          case AcctType.revenue:
+            rev[i] += l.credit - l.debit;
+          case AcctType.contra:
+            rev[i] -= l.debit - l.credit;
+          case AcctType.expense:
+            exp[i] += l.debit - l.credit;
+          default:
+            break;
+        }
+      }
+    }
+    return [for (var i = 0; i < n; i++) MonthFigures(DateTime(first.year, first.month + i, 1), roundMoney(rev[i]), roundMoney(exp[i]))];
   }
 
   /// أعمار الديون: كم من المستحق عمره شهر، شهران، ثلاثة، أكثر
@@ -372,7 +552,22 @@ class Accounting {
         other[k] = roundMoney((other[k] ?? 0) - e.amount);
       }
     }
-    return CashDay(dateOnly(day), roundMoney(cin), roundMoney(cref), roundMoney(cexp), other);
+    var mIn = 0.0, mOut = 0.0;
+    for (final m in d.moves.all.where((m) => r.has(m.date) && m.kind != 'opening')) {
+      for (final (acc, sign) in [(m.to, 1), (m.from, -1)]) {
+        if (acc == null) continue;
+        if (acc == Accounts.cash) {
+          if (sign > 0) {
+            mIn += m.amount;
+          } else {
+            mOut += m.amount;
+          }
+        } else {
+          other[acc] = roundMoney((other[acc] ?? 0) + sign * m.amount);
+        }
+      }
+    }
+    return CashDay(dateOnly(day), roundMoney(cin), roundMoney(cref), roundMoney(cexp), other, movesIn: roundMoney(mIn), movesOut: roundMoney(mOut));
   }
 
   CashClose? closeOf(DateTime day) {
@@ -393,6 +588,109 @@ class Accounting {
           {'d': dayKey(day), 'e': fmtMoney(c.expected), 'c': fmtMoney(c.counted), 'v': fmtMoney(c.variance)})),
     ]);
     return c;
+  }
+
+  // ---------------------------------------------------------------------------
+  // حركات المال وإقفال الفترات
+  // ---------------------------------------------------------------------------
+
+  /// الحسابات المالية المعروفة: الصندوق، كل محفظة وبنك في الإعدادات، وأي حساب له رصيد
+  List<String> moneyAccounts() {
+    final out = <String>[Accounts.cash];
+    for (final a in d.settings.payAccounts.where((a) => a.active)) {
+      if (!out.contains(a.name)) out.add(a.name);
+    }
+    for (final k in moneyBalances(d.today).keys) {
+      if (!out.contains(k)) out.add(k);
+    }
+    return out;
+  }
+
+  Future<MoneyMove> addMove({required String kind, required DateTime date, required double amount, String? from, String? to, String? note}) async {
+    d.require(Feature.accounting);
+    if (!d.can(Perm.expenses)) throw GymException(tr('ليست لديك صلاحية'));
+    amount = roundMoney(amount);
+    if (amount <= 0) throw GymException(tr('اكتب مبلغاً صحيحاً'));
+    if (!MoneyMove.kinds.contains(kind)) throw GymException(tr('نوع غير معروف'));
+    final needFrom = kind == 'transfer' || kind == 'draw' || kind == 'vat';
+    final needTo = kind == 'transfer' || kind == 'capital' || kind == 'opening';
+    if (needFrom && (from == null || from.isEmpty) || needTo && (to == null || to.isEmpty)) throw GymException(tr('اختر الحساب'));
+    if (kind == 'transfer' && from == to) throw GymException(tr('اختر حسابين مختلفين'));
+    if (dateOnly(date).isAfter(d.today)) throw GymException(tr('التاريخ في المستقبل'));
+    d.requireOpen(date);
+    final m = MoneyMove(
+        id: newId(), date: date, kind: kind, amount: amount, from: needFrom ? from : null, to: needTo ? to : null, note: note, by: d.userName);
+    await d.putAll([
+      m,
+      d.auditEntry('move', '${moveKindName(kind)}: ${fmtMoney(amount)} ${m.from ?? ''}${m.from != null && m.to != null ? ' ← ' : ''}${m.to ?? ''}'),
+    ]);
+    return m;
+  }
+
+  Future<void> deleteMove(MoneyMove m) async {
+    if (!d.can(Perm.expenses)) throw GymException(tr('ليست لديك صلاحية'));
+    d.requireOpen(m.date);
+    await d.remove(m);
+    await d.log('move_delete', '${moveKindName(m.kind)} ${dayKey(m.date)}: ${fmtMoney(m.amount)}');
+  }
+
+  Map<String, double> _snapshot(DateTime until) => {
+        for (final t in trialBalance(Range(DateTime(1990), until)))
+          if (t.balance.abs() >= 0.005) t.account: t.balance,
+      };
+
+  /// إقفال الفترة حتى [until]: لا عمليات بتاريخ قبله بعد اليوم، ويُحفظ ميزان المراجعة للمقارنة
+  Future<PeriodLock> lockPeriod(DateTime until) async {
+    d.require(Feature.accounting);
+    if (!d.can(Perm.settings)) throw GymException(tr('يحتاج صلاحية المالك'));
+    until = dateOnly(until);
+    if (!until.isBefore(d.today)) throw GymException(tr('يمكن إقفال الأيام الماضية فقط'));
+    final cur = d.lockedUntil;
+    if (cur != null && !until.isAfter(cur)) throw GymException(tr('الفترة حتى {d} مقفلة أصلاً', {'d': dayKey(cur)}));
+    final l = PeriodLock(id: newId(), until: until, time: d.now(), by: d.userName, snapshot: _snapshot(until));
+    await d.putAll([l, d.auditEntry('lock', tr('إقفال الفترة حتى {d}', {'d': dayKey(until)}))]);
+    return l;
+  }
+
+  /// فتح آخر فترة مقفلة (يُسجَّل في العمليات الحساسة)
+  Future<void> unlockLast() async {
+    if (!d.can(Perm.settings)) throw GymException(tr('يحتاج صلاحية المالك'));
+    final l = d.locks.all.fold<PeriodLock?>(null, (a, b) => a == null || b.until.isAfter(a.until) ? b : a);
+    if (l == null) return;
+    await d.remove(l);
+    await d.log('unlock', tr('فتح الفترة المقفلة حتى {d}', {'d': dayKey(l.until)}));
+  }
+
+  /// سطور المحاسبة في ملخص المالك اليومي: إغلاق الصندوق وملاحظات التدقيق
+  String dailyAuditText(DateTime day) {
+    final b = StringBuffer();
+    final c = closeOf(day);
+    final cd = cashDay(day);
+    if (c != null) {
+      b.writeln(c.variance.abs() < 0.5
+          ? tr('🧾 الصندوق: مطابق ({a}) — {by}', {'a': fmtMoney(c.counted), 'by': c.by ?? tr('المالك')})
+          : tr('🧾 الصندوق: فرق {v} — {by}', {'v': '${c.variance > 0 ? '+' : ''}${fmtMoney(c.variance)}', 'by': c.by ?? tr('المالك')}));
+    } else if (cd.cashIn > 0 || cd.cashExpenses > 0) {
+      b.writeln(tr('🧾 الصندوق: لم يُغلق (المتوقع {a})', {'a': fmtMoney(cd.expected)}));
+    }
+    final f = audit().where((x) => x.severity != Severity.info).toList();
+    b.writeln(f.isEmpty
+        ? tr('✅ التدقيق المالي: الحسابات سليمة')
+        : tr('⚠️ التدقيق المالي: {n} ملاحظة — {t}', {'n': f.length, 't': f.first.title}));
+    return b.toString().trim();
+  }
+
+  /// درجة صحة الحسابات من 100
+  static int healthScore(List<Finding> f) {
+    var s = 100;
+    for (final x in f) {
+      s -= switch (x.severity) {
+        Severity.critical => 25,
+        Severity.warning => 8,
+        Severity.info => 2,
+      };
+    }
+    return s.clamp(0, 100);
   }
 
   /// أداء كل موظف: ما حصّله، الخصومات، الاستردادات
@@ -564,7 +862,7 @@ class Accounting {
           [for (final i in bigDisc) '${inv(i)}: ${fmtNum(i.discount / i.subtotal * 100)}% — ${i.createdBy ?? tr('المالك')}']));
     }
     // 14) عمليات حساسة
-    const sensitive = {'refund', 'cancel', 'void', 'reject', 'override', 'adjust', 'price', 'audit_fix'};
+    const sensitive = {'refund', 'cancel', 'void', 'reject', 'override', 'adjust', 'price', 'audit_fix', 'writeoff', 'unlock', 'move_delete', 'expense_delete'};
     final ops = [for (final a in d.audit.all) if (sensitive.contains(a.action) && daysBetween(dateOnly(a.time), today) <= 7) a]
       ..sort((a, b) => b.time.compareTo(a.time));
     if (ops.isNotEmpty) {
@@ -592,8 +890,53 @@ class Accounting {
     // 17) ديون قديمة
     final old = [for (final i in d.invoices.all) if (i.balance > 0.001 && daysBetween(dateOnly(i.date), today) > 90) i];
     if (old.isNotEmpty) {
-      out.add(Finding('old_debt', Severity.info, tr('ديون عمرها أكثر من 90 يوماً'), tr('تابع تحصيلها أو قرّر إعدامها بقرار منك.'),
+      out.add(Finding('old_debt', Severity.info, tr('ديون عمرها أكثر من 90 يوماً'), tr('تابع تحصيلها، أو افتح الفاتورة واختر «إعدام الدين» إن تعذّر التحصيل.'),
           [for (final i in old) '${inv(i)}: ${fmtMoney(i.balance)}']));
+    }
+    // 18) تغيّر في فترة مقفلة
+    for (final l in d.locks.all) {
+      final now = _snapshot(l.until);
+      final diff = <String>[
+        for (final k in {...l.snapshot.keys, ...now.keys})
+          if (((now[k] ?? 0) - (l.snapshot[k] ?? 0)).abs() > 0.01)
+            '${Accounts.label(k)}: ${fmtMoney(l.snapshot[k] ?? 0)} → ${fmtMoney(now[k] ?? 0)}',
+      ];
+      if (diff.isNotEmpty) {
+        out.add(Finding('lock_changed', Severity.critical, tr('تغيّرت أرقام فترة مقفلة (حتى {d})', {'d': dayKey(l.until)}), tr('عملية بتاريخ قديم وصلت من جهاز آخر أو من نسخة احتياطية. راجعها في دفتر اليومية.'), diff));
+      }
+    }
+    // 19) حساب مالي برصيد سالب
+    final negMoney = [for (final e in moneyBalances(today).entries) if (e.value < -0.01) e];
+    if (negMoney.isNotEmpty) {
+      out.add(Finding('negative_money', Severity.warning, tr('حسابات مالية برصيد سالب'),
+          tr('سجّل الرصيد الافتتاحي أو التحويل الناقص من «حركة مال»، أو راجع المصروفات المسجّلة عليه.'),
+          [for (final e in negMoney) '${Accounts.label(e.key)}: ${fmtMoney(e.value)}']));
+    }
+    // 20) مصروفات أعلى من المعتاد
+    final cut = addDays(today, -30);
+    final recent = <String, double>{}, past = <String, double>{};
+    for (final e in d.expenses.all) {
+      final age = daysBetween(dateOnly(e.date), today);
+      if (age < 0) continue;
+      if (!e.date.isBefore(cut)) {
+        recent[e.category] = (recent[e.category] ?? 0) + e.amount;
+      } else if (age <= 120) {
+        past[e.category] = (past[e.category] ?? 0) + e.amount;
+      }
+    }
+    final spikes = [
+      for (final e in recent.entries)
+        if ((past[e.key] ?? 0) > 0 && e.value > 2 * past[e.key]! / 3 && e.value - past[e.key]! / 3 > 100)
+          tr('{c}: {a} (المعتاد {n} شهرياً)', {'c': e.key, 'a': fmtMoney(e.value), 'n': fmtMoney(past[e.key]! / 3)})
+    ];
+    if (spikes.isNotEmpty) {
+      out.add(Finding('expense_spike', Severity.info, tr('مصروفات أعلى من المعتاد آخر 30 يوماً'), tr('أكثر من ضعف متوسط الأشهر الثلاثة السابقة. تأكد أنها صحيحة.'), spikes));
+    }
+    // 21) الشهر الماضي غير مقفل
+    final lastMonthEnd = DateTime(today.year, today.month, 0);
+    final lu = d.lockedUntil;
+    if (today.day >= 5 && (lu == null || lu.isBefore(lastMonthEnd)) && d.invoices.all.any((i) => !i.date.isAfter(lastMonthEnd))) {
+      out.add(Finding('no_lock', Severity.info, tr('الشهر الماضي غير مقفل'), tr('أقفله من «الأرصدة» بعد مراجعته، فلا تتغير أرقامه بعد ذلك.'), [dayKey(lastMonthEnd).substring(0, 7)]));
     }
     out.sort((a, b) => a.severity.index.compareTo(b.severity.index));
     return out;

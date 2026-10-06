@@ -15,6 +15,7 @@ import '../widgets/dialogs.dart';
 import 'invoice_screen.dart';
 import 'member_detail_screen.dart';
 import 'reports_screen.dart';
+import 'accounting_screen.dart';
 import 'shop_screen.dart';
 
 const expenseCategories = ['إيجار', 'رواتب', 'كهرباء ومياه', 'صيانة الأجهزة', 'إعلانات', 'مستلزمات', 'نظافة', 'أخرى'];
@@ -34,6 +35,8 @@ class FinanceScreen extends StatelessWidget {
         appBar: AppBar(
           title: Text(tr('المالية')),
           actions: [
+            if (g.can(Perm.sell) && g.has(Feature.accounting))
+              IconButton(tooltip: tr('إغلاق الصندوق'), icon: const Icon(Icons.point_of_sale), onPressed: () => showCashCloseDialog(context)),
             if (g.can(Perm.sell))
               IconButton(
                   tooltip: tr('المتجر'),
@@ -84,6 +87,7 @@ class InvoiceTile extends StatelessWidget {
       InvoiceStatus.partial => (tr('جزئي'), StatusColors.expiring),
       InvoiceStatus.unpaid => (tr('غير مدفوعة'), StatusColors.expired),
       InvoiceStatus.voided => (tr('ملغاة'), StatusColors.none),
+      InvoiceStatus.writtenOff => (tr('دين معدوم'), StatusColors.none),
     };
     return ListTile(
       onTap: () => context.push(InvoiceScreen(invoiceId: inv.id)),
@@ -363,8 +367,7 @@ class _ExpensesList extends StatelessWidget {
                   trailing: Text(fmtMoney(e.amount), style: const TextStyle(fontWeight: FontWeight.w800)),
                   onLongPress: () async {
                     if (await confirm(context, tr('حذف المصروف؟'), danger: true, ok: tr('حذف'))) {
-                      await g.remove(e);
-                      await g.log('expense_delete', '${e.category} ${fmtMoney(e.amount)}');
+                      if (context.mounted) await runAction(context, () => context.services.billing.deleteExpense(e));
                     }
                   },
                 ),

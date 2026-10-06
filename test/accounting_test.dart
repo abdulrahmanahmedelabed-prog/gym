@@ -35,7 +35,9 @@ void main() {
       expect(inc.totalExpenses, closeTo(rep.expenses(r), 0.05));
       // النقد في كل الحسابات = المحصّل − المصروفات
       final cash = a.moneyBalances(g.today).values.fold(0.0, (s, v) => s + v);
-      expect(cash, closeTo(rep.collected(r) - rep.expenses(r), 0.05));
+      final opening = g.moves.all.where((m) => m.kind == 'opening').fold(0.0, (s, m) => s + m.amount);
+      expect(cash, closeTo(rep.collected(r) - rep.expenses(r) + opening, 0.05));
+      expect(a.balanceSheet(g.today).balanced, isTrue);
       // أعمار الديون = مجموع الديون
       expect(a.aging(g.today).total, closeTo(open, 0.05));
       final audit = a.audit();
@@ -55,7 +57,7 @@ void main() {
         final r = await ms.sell(SaleRequest(memberId: m.id, planId: plan.id, discount: 100, registrationFee: true));
         await BillingService(g).collect(r.invoice, 300, PayMethod.wallet, account: 'جوال باي');
         final a = Accounting(g);
-        final e = a.invoiceEntry(r.invoice)!;
+        final e = a.invoiceEntries(r.invoice).first;
         expect(e.balanced, isTrue);
         final vat = e.lines.where((l) => l.account == Accounts.vat).fold(0.0, (s, l) => s + l.credit);
         expect(vat, closeTo(r.invoice.tax, 0.02));
@@ -123,6 +125,78 @@ void main() {
       expect(f.items.single, contains('-20'));
       // تقرير الموظفين
       expect(a.staffReport(Range(g.today.subtract(const Duration(days: 1)), g.today)).first.collected, 600);
+    });
+
+    test('محاسبة 10/10: قيود بتاريخ حدوثها، إقفال الفترة، إعدام الدين، حركات المال، الميزانية', () async {
+      final (g, clock) = await newGym(DateTime(2026, 8, 10, 12));
+      final plan = await addPlan(g, price: 500);
+      final ms = MembershipService(g);
+      final b = BillingService(g);
+      final a = Accounting(g);
+      final m = await ms.addMember(ms.newMember(name: 'سالم', phone: '0592000004'));
+      final ra = await ms.sell(SaleRequest(memberId: m.id, planId: plan.id)); // آجل
+      final rb = await ms.sell(SaleRequest(memberId: m.id, planId: plan.id, payments: const [PayInput(500, PayMethod.cash)]));
+      await a.addMove(kind: 'opening', date: g.today, amount: 1000, to: 'بنك فلسطين');
+      final aug = Range(DateTime(2026, 8, 1), DateTime(2026, 8, 31));
+      final augBefore = {for (final t in a.trialBalance(aug)) t.account: t.balance};
+      expect(augBefore[Accounts.opening], -1000);
+
+      clock.setDay(DateTime(2026, 9, 5), 10);
+      expect(a.audit().any((f) => f.code == 'no_lock'), isTrue);
+      await a.lockPeriod(DateTime(2026, 8, 31));
+      expect(g.lockedUntil, DateTime(2026, 8, 31));
+      expect(a.audit().any((f) => f.code == 'no_lock'), isFalse);
+
+      // أحداث سبتمبر لا تغيّر أرقام أغسطس
+      await b.voidInvoice(ra.invoice, 'لم يحضر');
+      await ms.cancel(rb.subscription, reason: 'سفر', refund: 100);
+      expect({for (final t in a.trialBalance(aug)) t.account: t.balance}, augBefore);
+      expect(a.audit().any((f) => f.code == 'lock_changed'), isFalse);
+      final sep = a.incomeStatement(Range(DateTime(2026, 9, 1), g.today));
+      expect(sep.netRevenue, lessThan(0)); // إلغاءات في سبتمبر لمبيعات أغسطس
+
+      // لا عمليات بتاريخ داخل الفترة المقفلة
+      expect(() => b.addExpense(date: DateTime(2026, 8, 20), category: 'نظافة', amount: 10), throwsA(isA<GymException>()));
+      expect(() => a.addMove(kind: 'capital', date: DateTime(2026, 8, 20), amount: 10, to: Accounts.cash), throwsA(isA<GymException>()));
+
+      // حركات المال وأثرها على الصندوق
+      await a.addMove(kind: 'transfer', date: g.today, amount: 150, from: Accounts.cash, to: 'بنك فلسطين');
+      await a.addMove(kind: 'capital', date: g.today, amount: 200, to: Accounts.cash);
+      await a.addMove(kind: 'draw', date: g.today, amount: 50, from: 'بنك فلسطين');
+      expect(() => a.addMove(kind: 'transfer', date: g.today, amount: 5, from: Accounts.cash, to: Accounts.cash), throwsA(isA<GymException>()));
+      final cd = a.cashDay(g.today);
+      expect(cd.cashRefunds, 100);
+      expect(cd.movesOut, 150);
+      expect(cd.movesIn, 200);
+      expect(cd.expected, -50);
+      final money = a.moneyBalances(g.today);
+      expect(money[Accounts.cash], 500 - 100 - 150 + 200);
+      expect(money['بنك فلسطين'], 1000 + 150 - 50);
+
+      // إعدام دين
+      final rc = await ms.sell(SaleRequest(memberId: m.id, planId: plan.id, payments: const [PayInput(100, PayMethod.cash)]));
+      await b.writeOff(rc.invoice, 'سافر');
+      expect(rc.invoice.balance, 0);
+      expect(rc.invoice.status, InvoiceStatus.writtenOff);
+      expect(g.balanceOf(m.id), 0);
+      expect(a.incomeStatement(Range(DateTime(2026, 9, 1), g.today)).expenses[Accounts.badDebtCategory], 400);
+      expect(a.trend(2).last.expenses, 400);
+
+      // الميزانية متوازنة والذمم = الديون المفتوحة
+      final bs = a.balanceSheet(g.today);
+      expect(bs.balanced, isTrue);
+      expect(bs.assets[Accounts.receivable] ?? 0, 0);
+      expect(bs.equity[Accounts.drawings], -50);
+      expect(a.journal().every((e) => e.balanced), isTrue);
+      final led = a.ledger('بنك فلسطين');
+      expect(led.last.balance, 1100);
+
+      // دفعة بتاريخ قديم تصل من جهاز آخر: التدقيق يكشف تغيّر الفترة المقفلة
+      await g.put(Payment(id: 'late', number: 'RC-X', invoiceId: rb.invoice.id, date: DateTime(2026, 8, 15), amount: 5, method: PayMethod.cash));
+      expect(a.audit().firstWhere((f) => f.code == 'lock_changed').severity, Severity.critical);
+      await a.unlockLast();
+      expect(g.lockedUntil, isNull);
+      expect(g.audit.all.any((x) => x.action == 'unlock'), isTrue);
     });
   });
 }

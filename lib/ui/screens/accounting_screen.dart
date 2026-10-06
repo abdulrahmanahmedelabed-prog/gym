@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../core/dates.dart';
 import '../../core/i18n.dart';
 import '../../core/money.dart';
+import '../../models/business.dart';
 import '../../services/accounting.dart';
 import '../../services/data_tools.dart';
 import '../../services/license.dart';
@@ -75,6 +76,7 @@ class _AuditTab extends StatelessWidget {
     final crit = findings.where((f) => f.severity == Severity.critical).length;
     final warn = findings.where((f) => f.severity == Severity.warning).length;
     final ok = crit == 0 && warn == 0;
+    final score = Accounting.healthScore(findings);
     final a = sv.accounting;
     final today = a.cashDay(g.today);
     final closed = a.closeOf(g.today);
@@ -89,6 +91,12 @@ class _AuditTab extends StatelessWidget {
           title: Text(ok ? tr('الحسابات سليمة') : tr('{c} مشكلة حرجة، {w} تنبيه', {'c': crit, 'w': warn}),
               style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
           subtitle: Text(tr('يفحص البرنامج كل فاتورة ودفعة ومصروف تلقائياً: التطابق، التسلسل، التوازن، الصندوق، والعمليات الحساسة.')),
+          trailing: Text.rich(TextSpan(children: [
+            TextSpan(
+                text: '$score',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: score >= 90 ? const Color(0xFF16A34A) : (score >= 70 ? const Color(0xFFD97706) : context.colors.error))),
+            TextSpan(text: '/100', style: context.text.bodySmall),
+          ])),
         ),
       ),
       for (final f in findings) _FindingTile(f),
@@ -101,6 +109,8 @@ class _AuditTab extends StatelessWidget {
               InfoRow(tr('نقد مقبوض'), fmtMoney(today.cashIn)),
               if (today.cashRefunds > 0) InfoRow(tr('نقد مردود للأعضاء'), '- ${fmtMoney(today.cashRefunds)}'),
               if (today.cashExpenses > 0) InfoRow(tr('مصروفات من الصندوق'), '- ${fmtMoney(today.cashExpenses)}'),
+              if (today.movesIn > 0) InfoRow(tr('إيداع من المالك'), '+ ${fmtMoney(today.movesIn)}'),
+              if (today.movesOut > 0) InfoRow(tr('خرج من الصندوق (إيداع بنكي أو سحب)'), '- ${fmtMoney(today.movesOut)}'),
               const Divider(),
               InfoRow(tr('المفروض أن يكون في الصندوق'), fmtMoney(today.expected), bold: true),
               if (today.otherAccounts.isNotEmpty) ...[
@@ -123,7 +133,7 @@ class _AuditTab extends StatelessWidget {
               FilledButton.icon(
                 icon: const Icon(Icons.point_of_sale),
                 label: Text(closed == null ? tr('إغلاق الصندوق') : tr('إعادة العدّ')),
-                onPressed: () => _close(context, today.expected),
+                onPressed: () => showCashCloseDialog(context),
               ),
             ]),
           ),
@@ -150,42 +160,52 @@ class _AuditTab extends StatelessWidget {
     ]);
   }
 
-  Future<void> _close(BuildContext context, double expected) async {
-    final counted = TextEditingController();
-    final note = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: Text(tr('إغلاق الصندوق')),
-        content: SingleChildScrollView(
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text(tr('عُدّ النقد الموجود من حركة اليوم (بدون الفكّة الثابتة) واكتب المبلغ. يُسجَّل الفرق في التدقيق ولا يمكن تعديله.')),
-            const SizedBox(height: 12),
-            TextField(controller: counted, autofocus: true, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: tr('المبلغ المعدود'))),
-            const SizedBox(height: 10),
-            TextField(controller: note, decoration: InputDecoration(labelText: tr('ملاحظة (اختياري)'))),
-          ]),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء'))),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('حفظ'))),
-        ],
+}
+
+/// إغلاق الصندوق. للموظف بدون صلاحية التقارير يكون «أعمى»: يعدّ دون أن يرى المبلغ المتوقع، فلا يُعدَّل العدّ ليطابق.
+Future<void> showCashCloseDialog(BuildContext context) async {
+  final g = context.gym;
+  final a = context.services.accounting;
+  final blind = !g.can(Perm.reports);
+  final expected = a.cashDay(g.today).expected;
+  final counted = TextEditingController();
+  final note = TextEditingController();
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (c) => AlertDialog(
+      title: Text(tr('إغلاق الصندوق')),
+      content: SingleChildScrollView(
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text(tr('عُدّ النقد الموجود من حركة اليوم (بدون الفكّة الثابتة) واكتب المبلغ. يُسجَّل الفرق في التدقيق ولا يمكن تعديله.')),
+          if (!blind) ...[
+            const SizedBox(height: 8),
+            InfoRow(tr('المفروض أن يكون في الصندوق'), fmtMoney(expected), bold: true),
+          ],
+          const SizedBox(height: 12),
+          TextField(controller: counted, autofocus: true, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: tr('المبلغ المعدود'))),
+          const SizedBox(height: 10),
+          TextField(controller: note, decoration: InputDecoration(labelText: tr('ملاحظة (اختياري)'))),
+        ]),
       ),
-    );
-    if (ok != true || !context.mounted) return;
-    final v = parseAmount(counted.text);
-    if (v == null) {
-      context.toast(tr('اكتب المبلغ المعدود'), error: true);
-      return;
-    }
-    final g = context.gym;
-    final res = await runAction(context, () => context.services.accounting.closeCash(g.today, v, note: note.text.trim().isEmpty ? null : note.text.trim()));
-    if (res != null && context.mounted) {
-      context.toast(res.variance.abs() < 0.5
-          ? tr('الصندوق مطابق ✓')
-          : tr('يوجد فرق {v} — سُجّل في التدقيق', {'v': '${res.variance > 0 ? '+' : ''}${fmtMoney(res.variance)}'}),
-          error: res.variance.abs() >= 0.5);
-    }
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء'))),
+        FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('حفظ'))),
+      ],
+    ),
+  );
+  final text = counted.text, n = note.text.trim();
+  if (ok != true || !context.mounted) return;
+  final v = parseAmount(text);
+  if (v == null) {
+    context.toast(tr('اكتب المبلغ المعدود'), error: true);
+    return;
+  }
+  final res = await runAction(context, () => a.closeCash(g.today, v, note: n.isEmpty ? null : n));
+  if (res != null && context.mounted) {
+    context.toast(res.variance.abs() < 0.5
+        ? tr('الصندوق مطابق ✓')
+        : tr('يوجد فرق {v} — سُجّل في التدقيق', {'v': '${res.variance > 0 ? '+' : ''}${fmtMoney(res.variance)}'}),
+        error: res.variance.abs() >= 0.5);
   }
 }
 
@@ -235,6 +255,14 @@ Range _range(_P p, DateTime today) => switch (p) {
       _P.all => Range(DateTime(2000), today),
     };
 
+/// الفترة السابقة المماثلة للمقارنة
+Range? _prev(_P p, DateTime today) => switch (p) {
+      _P.month => Range(DateTime(today.year, today.month - 1, 1), DateTime(today.year, today.month, 0)),
+      _P.lastMonth => Range(DateTime(today.year, today.month - 2, 1), DateTime(today.year, today.month - 1, 0)),
+      _P.year => Range(DateTime(today.year - 1, 1, 1), DateTime(today.year - 1, 12, 31)),
+      _P.all => null,
+    };
+
 String _pName(_P p) => switch (p) {
       _P.month => tr('هذا الشهر'),
       _P.lastMonth => tr('الشهر الماضي'),
@@ -279,6 +307,9 @@ class _IncomeTabState extends State<_IncomeTab> {
     final r = _range(_p, g.today);
     final s = a.incomeStatement(r);
     final staff = a.staffReport(r);
+    final prevR = _prev(_p, g.today);
+    final prev = prevR == null ? null : a.incomeStatement(prevR);
+    final trend = a.trend(6);
     final profitColor = s.netProfit >= 0 ? const Color(0xFF16A34A) : context.colors.error;
     return ListView(padding: const EdgeInsets.only(bottom: 32), children: [
       _PeriodBar(_p, (v) => setState(() => _p = v)),
@@ -294,7 +325,48 @@ class _IncomeTabState extends State<_IncomeTab> {
             Text(tr('صافي الربح'), style: context.text.titleSmall),
             Text(fmtMoney(s.netProfit), style: context.text.headlineMedium?.copyWith(fontWeight: FontWeight.w900, color: profitColor)),
             if (s.netRevenue > 0) Text(tr('هامش الربح {p}%', {'p': fmtNum(s.margin)}), style: TextStyle(color: profitColor, fontWeight: FontWeight.w700)),
+            if (prev != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                tr('{p}: {v} (الفرق {d})', {
+                  'p': switch (_p) { _P.month => tr('الشهر الماضي'), _P.lastMonth => tr('الشهر الذي قبله'), _ => tr('السنة الماضية') },
+                  'v': fmtMoney(prev.netProfit),
+                  'd': '${s.netProfit >= prev.netProfit ? '+' : ''}${fmtMoney(roundMoney(s.netProfit - prev.netProfit))}',
+                }),
+                style: context.text.bodySmall,
+              ),
+            ],
           ]),
+        ),
+      ),
+      Section(
+        title: tr('آخر 6 أشهر'),
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(children: [
+              Row(children: [
+                Expanded(flex: 2, child: Text(tr('الشهر'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13))),
+                for (final h in [tr('الإيرادات'), tr('المصروفات'), tr('الربح')])
+                  Expanded(flex: 3, child: Text(h, textAlign: TextAlign.end, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13))),
+              ]),
+              const Divider(),
+              for (final m in trend)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(children: [
+                    Expanded(flex: 2, child: Text(dayKey(m.month).substring(0, 7), style: const TextStyle(fontSize: 13))),
+                    Expanded(flex: 3, child: Text(fmtNum(m.revenue), textAlign: TextAlign.end, style: const TextStyle(fontSize: 13))),
+                    Expanded(flex: 3, child: Text(fmtNum(m.expenses), textAlign: TextAlign.end, style: const TextStyle(fontSize: 13))),
+                    Expanded(
+                        flex: 3,
+                        child: Text(fmtNum(m.profit),
+                            textAlign: TextAlign.end,
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: m.profit >= 0 ? const Color(0xFF16A34A) : context.colors.error))),
+                  ]),
+                ),
+            ]),
+          ),
         ),
       ),
       Section(
@@ -409,22 +481,58 @@ class _BalancesTab extends StatelessWidget {
     final money = a.moneyBalances(g.today);
     final aging = a.aging(g.today);
     final deferred = a.deferredRevenue(g.today);
+    final bs = a.balanceSheet(g.today);
     final tb = a.trialBalance();
     final dr = roundMoney(tb.fold(0.0, (s, t) => s + t.debit));
     final cr = roundMoney(tb.fold(0.0, (s, t) => s + t.credit));
     final balanced = (dr - cr).abs() < 0.01;
+    final moves = g.moves.all.toList()..sort((x, y) => y.date.compareTo(x.date));
+    final locked = g.lockedUntil;
+    final lastMonthEnd = DateTime(g.today.year, g.today.month, 0);
+    void ledger(String acc) => context.push(LedgerScreen(account: acc));
+    Widget tapRow(String acc, double v, {Color? color}) => InkWell(
+          onTap: () => ledger(acc),
+          child: InfoRow(Accounts.label(acc), fmtMoney(v), color: color),
+        );
     return ListView(padding: const EdgeInsets.only(bottom: 32), children: [
       Section(
         title: tr('أين المال الآن'),
+        trailing: g.can(Perm.expenses)
+            ? TextButton.icon(icon: const Icon(Icons.swap_horiz, size: 18), label: Text(tr('حركة مال')), onPressed: () => showMoneyMoveDialog(context))
+            : null,
         child: Card(
           child: Padding(
             padding: const EdgeInsets.all(14),
             child: Column(children: [
-              for (final e in money.entries) InfoRow(Accounts.label(e.key), fmtMoney(e.value), color: e.value < 0 ? context.colors.error : null),
+              for (final e in money.entries) tapRow(e.key, e.value, color: e.value < 0 ? context.colors.error : null),
               const Divider(),
               InfoRow(tr('المجموع'), fmtMoney(money.values.fold(0.0, (s, v) => s + v)), bold: true),
               const SizedBox(height: 6),
-              Text(tr('قارن كل رصيد بكشف المحفظة أو البنك. الرصيد السالب يعني مصروفات سُجّلت على حساب أكثر مما دخله.'), style: context.text.bodySmall),
+              Text(tr('اضغط أي حساب لكشفه. قارن كل رصيد بكشف المحفظة أو البنك، وسجّل الإيداع في البنك وسحوباتك من «حركة مال».'), style: context.text.bodySmall),
+            ]),
+          ),
+        ),
+      ),
+      Section(
+        title: tr('الميزانية العمومية'),
+        trailing: Text(bs.balanced ? tr('متوازنة ✓') : tr('غير متوازنة'),
+            style: TextStyle(fontWeight: FontWeight.w800, color: bs.balanced ? const Color(0xFF16A34A) : context.colors.error)),
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Text(tr('ما يملكه النادي'), style: const TextStyle(fontWeight: FontWeight.w800)),
+              for (final e in bs.assets.entries) tapRow(e.key, e.value),
+              InfoRow(tr('مجموع الأصول'), fmtMoney(bs.totalAssets), bold: true),
+              const Divider(),
+              Text(tr('ما على النادي'), style: const TextStyle(fontWeight: FontWeight.w800)),
+              if (bs.liabilities.isEmpty) InfoRow(tr('لا التزامات'), fmtMoney(0)),
+              for (final e in bs.liabilities.entries) tapRow(e.key, e.value),
+              const Divider(),
+              Text(tr('حق المالك'), style: const TextStyle(fontWeight: FontWeight.w800)),
+              for (final e in bs.equity.entries) tapRow(e.key, e.value),
+              InfoRow(tr('الأرباح المتراكمة'), fmtMoney(bs.retained), color: bs.retained < 0 ? context.colors.error : null),
+              InfoRow(tr('الالتزامات + حق المالك'), fmtMoney(roundMoney(bs.totalLiabilities + bs.totalEquity)), bold: true),
             ]),
           ),
         ),
@@ -462,6 +570,83 @@ class _BalancesTab extends StatelessWidget {
         ),
       ),
       Section(
+        title: tr('إقفال الفترات'),
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Row(children: [
+                Icon(locked == null ? Icons.lock_open : Icons.lock_outline, color: locked == null ? null : const Color(0xFF16A34A)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(locked == null ? tr('لا توجد فترة مقفلة') : tr('مقفلة حتى {d}', {'d': dayKey(locked)}),
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                ),
+              ]),
+              const SizedBox(height: 6),
+              Text(tr('بعد مراجعة الشهر أقفله: لا يُسجَّل بعدها مصروف أو حركة بتاريخ داخله، ويُحفظ ميزانه ليكشف التدقيق أي تغيير لاحق.'),
+                  style: context.text.bodySmall),
+              if (g.can(Perm.settings)) ...[
+                const SizedBox(height: 10),
+                if (locked == null || locked.isBefore(lastMonthEnd))
+                  FilledButton.tonalIcon(
+                    icon: const Icon(Icons.lock_outline),
+                    label: Text(tr('إقفال حتى {d}', {'d': dayKey(lastMonthEnd)})),
+                    onPressed: () async {
+                      if (await confirm(context, tr('إقفال حتى {d}', {'d': dayKey(lastMonthEnd)}),
+                              message: tr('تأكد أن مصروفات الشهر وحركاته مسجّلة كلها. يمكن فتح الإقفال لاحقاً ويُسجَّل ذلك في العمليات الحساسة.')) &&
+                          context.mounted) {
+                        await runAction(context, () => a.lockPeriod(lastMonthEnd), success: tr('تم الإقفال ✓'));
+                      }
+                    },
+                  ),
+                if (locked != null)
+                  TextButton.icon(
+                    icon: const Icon(Icons.lock_open),
+                    label: Text(tr('فتح آخر إقفال')),
+                    onPressed: () async {
+                      if (await confirm(context, tr('فتح آخر إقفال'), danger: true) && context.mounted) {
+                        await runAction(context, a.unlockLast);
+                      }
+                    },
+                  ),
+              ],
+            ]),
+          ),
+        ),
+      ),
+      if (moves.isNotEmpty)
+        Section(
+          title: tr('حركات المال'),
+          child: Card(
+            child: Column(children: [
+              for (final m in moves.take(15))
+                ListTile(
+                  dense: true,
+                  leading: Icon(_moveIcon(m.kind)),
+                  title: Text('${Accounting.moveKindName(m.kind)} — ${fmtMoney(m.amount)}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: Text([
+                    dayKey(m.date),
+                    if (m.from != null) Accounts.label(m.from!),
+                    if (m.from != null && m.to != null) '←',
+                    if (m.to != null) Accounts.label(m.to!),
+                    if (m.note != null) '• ${m.note}',
+                  ].join(' ')),
+                  trailing: g.can(Perm.expenses) && (locked == null || m.date.isAfter(locked))
+                      ? IconButton(
+                          tooltip: tr('حذف'),
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: () async {
+                            if (await confirm(context, tr('حذف الحركة؟'), danger: true) && context.mounted) {
+                              await runAction(context, () => a.deleteMove(m));
+                            }
+                          })
+                      : null,
+                ),
+            ]),
+          ),
+        ),
+      Section(
         title: tr('ميزان المراجعة'),
         trailing: Text(balanced ? tr('متوازن ✓') : tr('غير متوازن'),
             style: TextStyle(fontWeight: FontWeight.w800, color: balanced ? const Color(0xFF16A34A) : context.colors.error)),
@@ -476,13 +661,16 @@ class _BalancesTab extends StatelessWidget {
               ]),
               const Divider(),
               for (final t in tb)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(children: [
-                    Expanded(flex: 3, child: Text(Accounts.label(t.account), style: const TextStyle(fontSize: 13))),
-                    Expanded(flex: 2, child: Text(t.balance > 0 ? fmtNum(t.balance) : '', textAlign: TextAlign.end, style: const TextStyle(fontSize: 13))),
-                    Expanded(flex: 2, child: Text(t.balance < 0 ? fmtNum(-t.balance) : '', textAlign: TextAlign.end, style: const TextStyle(fontSize: 13))),
-                  ]),
+                InkWell(
+                  onTap: () => ledger(t.account),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(children: [
+                      Expanded(flex: 3, child: Text(Accounts.label(t.account), style: const TextStyle(fontSize: 13))),
+                      Expanded(flex: 2, child: Text(t.balance > 0 ? fmtNum(t.balance) : '', textAlign: TextAlign.end, style: const TextStyle(fontSize: 13))),
+                      Expanded(flex: 2, child: Text(t.balance < 0 ? fmtNum(-t.balance) : '', textAlign: TextAlign.end, style: const TextStyle(fontSize: 13))),
+                    ]),
+                  ),
                 ),
               const Divider(),
               Row(children: [
@@ -502,12 +690,164 @@ class _BalancesTab extends StatelessWidget {
           onPressed: () => _export(context, 'trial-balance-${dayKey(g.today)}.csv', a.trialRows(Range(DateTime(2000), g.today))),
         ),
       ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        child: OutlinedButton.icon(
+          icon: const Icon(Icons.ios_share),
+          label: Text(tr('تصدير الميزانية العمومية (Excel)')),
+          onPressed: () => _export(context, 'balance-sheet-${dayKey(g.today)}.csv', [
+            [tr('البند'), tr('المبلغ')],
+            for (final e in bs.assets.entries) [Accounts.label(e.key), e.value],
+            [tr('مجموع الأصول'), bs.totalAssets],
+            for (final e in bs.liabilities.entries) [Accounts.label(e.key), e.value],
+            for (final e in bs.equity.entries) [Accounts.label(e.key), e.value],
+            [tr('الأرباح المتراكمة'), bs.retained],
+            [tr('الالتزامات + حق المالك'), roundMoney(bs.totalLiabilities + bs.totalEquity)],
+          ]),
+        ),
+      ),
     ]);
   }
 
   /// مجموع الأرصدة المدينة أو الدائنة
   static double _side(List<TrialRow> tb, bool debit) =>
       roundMoney(tb.fold(0.0, (s, t) => s + (debit ? (t.balance > 0 ? t.balance : 0) : (t.balance < 0 ? -t.balance : 0))));
+}
+
+IconData _moveIcon(String k) => switch (k) {
+      'transfer' => Icons.swap_horiz,
+      'draw' => Icons.north_east,
+      'capital' => Icons.south_west,
+      'opening' => Icons.flag_outlined,
+      _ => Icons.account_balance_outlined,
+    };
+
+/// حركة مال: إيداع النقد في البنك، سحب المالك، إيداع رأس مال، رصيد افتتاحي، توريد الضريبة
+Future<void> showMoneyMoveDialog(BuildContext context) async {
+  final g = context.gym;
+  final a = context.services.accounting;
+  final accounts = a.moneyAccounts();
+  var kind = 'transfer';
+  String? from = Accounts.cash;
+  String? to = accounts.firstWhere((x) => x != Accounts.cash, orElse: () => '');
+  if (to.isEmpty) to = null;
+  var date = g.today;
+  final amount = TextEditingController();
+  final note = TextEditingController();
+  String hint(String k) => switch (k) {
+        'transfer' => tr('مثل إيداع نقد الصندوق في البنك، أو تحويل رصيد المحفظة للبنك.'),
+        'draw' => tr('مال أخذه المالك لنفسه. ليس مصروفاً ولا يُنقص الربح.'),
+        'capital' => tr('مال وضعه المالك في النادي من جيبه.'),
+        'opening' => tr('رصيد الحساب يوم بدأت استخدام البرنامج.'),
+        _ => tr('دفع الضريبة المستحقة لدائرة الضريبة.'),
+      };
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (c) => StatefulBuilder(builder: (c, set) {
+      final needFrom = kind == 'transfer' || kind == 'draw' || kind == 'vat';
+      final needTo = kind == 'transfer' || kind == 'capital' || kind == 'opening';
+      Widget pick(String label, String? v, ValueChanged<String?> on) => DropdownButtonFormField<String>(
+            key: ValueKey('$label$kind'),
+            initialValue: accounts.contains(v) ? v : null,
+            isExpanded: true,
+            decoration: InputDecoration(labelText: label),
+            items: [for (final x in accounts) DropdownMenuItem(value: x, child: Text(Accounts.label(x), overflow: TextOverflow.ellipsis))],
+            onChanged: on,
+          );
+      return AlertDialog(
+        title: Text(tr('حركة مال')),
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              for (final k in MoneyMove.kinds)
+                ChoiceChip(label: Text(Accounting.moveKindName(k)), selected: kind == k, onSelected: (_) => set(() => kind = k)),
+            ]),
+            const SizedBox(height: 8),
+            Text(hint(kind), style: Theme.of(c).textTheme.bodySmall),
+            const SizedBox(height: 8),
+            if (needFrom) pick(tr('من'), from, (v) => set(() => from = v)),
+            if (needTo) pick(tr('إلى'), to, (v) => set(() => to = v)),
+            const SizedBox(height: 8),
+            TextField(controller: amount, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: tr('المبلغ'))),
+            const SizedBox(height: 8),
+            TextField(controller: note, decoration: InputDecoration(labelText: tr('ملاحظة (اختياري)'))),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(tr('التاريخ')),
+              trailing: Text(dayKey(date)),
+              onTap: () async {
+                final d = await pickDay(c, date, last: g.today);
+                if (d != null) set(() => date = d);
+              },
+            ),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء'))),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('حفظ'))),
+        ],
+      );
+    }),
+  );
+  final v = parseAmount(amount.text), n = note.text.trim();
+  if (ok != true || !context.mounted) return;
+  if (v == null) {
+    context.toast(tr('اكتب مبلغاً صحيحاً'), error: true);
+    return;
+  }
+  await runAction(context, () => a.addMove(kind: kind, date: date, amount: v, from: from, to: to, note: n.isEmpty ? null : n), success: tr('تم الحفظ ✓'));
+}
+
+/// كشف حساب: كل حركة على الحساب والرصيد بعدها
+class LedgerScreen extends StatelessWidget {
+  final String account;
+  const LedgerScreen({super.key, required this.account});
+
+  @override
+  Widget build(BuildContext context) {
+    context.gymWatch;
+    final a = context.services.accounting;
+    final lines = a.ledger(account);
+    final rows = lines.reversed.toList();
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(Accounts.label(account)),
+        actions: [
+          IconButton(
+            tooltip: tr('تصدير'),
+            icon: const Icon(Icons.ios_share),
+            onPressed: () => _export(context, 'ledger.csv', [
+              [tr('التاريخ'), tr('المرجع'), tr('البيان'), tr('مدين'), tr('دائن'), tr('الرصيد')],
+              for (final l in lines) [dayKey(l.date), l.ref, l.text, l.debit == 0 ? '' : l.debit, l.credit == 0 ? '' : l.credit, l.balance],
+            ]),
+          ),
+        ],
+      ),
+      body: rows.isEmpty
+          ? EmptyState(icon: Icons.menu_book_outlined, title: tr('لا حركات على هذا الحساب'))
+          : ListView.builder(
+              padding: const EdgeInsets.only(bottom: 24),
+              itemCount: rows.length + 1,
+              itemBuilder: (c, i) {
+                if (i == 0) {
+                  return ListTile(
+                    title: Text(tr('الرصيد الحالي'), style: const TextStyle(fontWeight: FontWeight.w800)),
+                    trailing: Text(fmtMoney(lines.last.balance), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+                  );
+                }
+                final l = rows[i - 1];
+                final inc = l.debit > 0;
+                return ListTile(
+                  dense: true,
+                  title: Text(l.text, maxLines: 2, overflow: TextOverflow.ellipsis),
+                  subtitle: Text('${dayKey(l.date)}${l.ref.isEmpty ? '' : ' • ${l.ref}'} • ${tr('الرصيد')} ${fmtNum(l.balance)}'),
+                  trailing: Text('${inc ? '+' : '−'}${fmtNum(inc ? l.debit : l.credit)}',
+                      style: TextStyle(fontWeight: FontWeight.w800, color: inc ? const Color(0xFF16A34A) : context.colors.error)),
+                );
+              },
+            ),
+    );
+  }
 }
 
 // -----------------------------------------------------------------------------

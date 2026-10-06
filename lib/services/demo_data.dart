@@ -328,12 +328,50 @@ class DemoData {
       final day0 = DateTime(base.year, base.month, 5);
       if (day0.isAfter(today)) continue;
       expenses.addAll([
-        Expense(id: newId(), date: day0, category: 'إيجار', amount: 6000, by: owner.name, method: 'transfer', account: 'بنك فلسطين'),
-        Expense(id: newId(), date: DateTime(base.year, base.month, 28).isAfter(today) ? today : DateTime(base.year, base.month, 28), category: 'رواتب', amount: 9000, by: owner.name, method: 'transfer', account: 'بنك فلسطين'),
-        Expense(id: newId(), date: DateTime(base.year, base.month, 12), category: 'كهرباء ومياه', amount: 1200 + rnd.nextInt(600).toDouble(), by: owner.name, method: 'wallet', account: 'جوال باي'),
+        Expense(id: newId(), date: day0, category: 'إيجار', amount: 3500, by: owner.name, method: 'transfer', account: 'بنك فلسطين'),
+        Expense(id: newId(), date: DateTime(base.year, base.month, 28).isAfter(today) ? today : DateTime(base.year, base.month, 28), category: 'رواتب', amount: 5500, by: owner.name, method: 'transfer', account: 'بنك فلسطين'),
+        Expense(id: newId(), date: DateTime(base.year, base.month, 12), category: 'كهرباء ومياه', amount: 700 + rnd.nextInt(400).toDouble(), by: owner.name, method: 'wallet', account: 'جوال باي'),
         if (rnd.nextBool()) Expense(id: newId(), date: DateTime(base.year, base.month, 18), category: 'صيانة الأجهزة', amount: 300 + rnd.nextInt(700).toDouble(), by: owner.name),
         if (rnd.nextBool()) Expense(id: newId(), date: DateTime(base.year, base.month, 20), category: 'إعلانات', amount: 400 + rnd.nextInt(500).toDouble(), by: owner.name),
       ].where((e) => !e.date.isAfter(today)));
+    }
+
+    // أرصدة افتتاحية وإيداع النقد في البنك أسبوعياً (يبقى في الصندوق نقد اليوم فقط)
+    final moves = <MoneyMove>[];
+    final start = DateTime(today.year, today.month - 11, 1);
+    moves
+      ..add(MoneyMove(id: newId(), date: start, kind: 'opening', amount: 15000, to: 'بنك فلسطين', by: owner.name))
+      ..add(MoneyMove(id: newId(), date: start, kind: 'opening', amount: 2000, to: 'جوال باي', by: owner.name));
+    // النقد والبطاقات تُودَع في البنك كل خميس، ورصيد بال باي يُحوَّل أول كل شهر
+    final bal = <String, double>{};
+    String acc(Payment p) => switch (p.method) {
+          PayMethod.cash => 'الصندوق (نقد)',
+          PayMethod.card => 'البطاقات',
+          _ => p.account ?? '',
+        };
+    final paysByDay = <DateTime, List<Payment>>{};
+    for (final p in numberedPays) {
+      (paysByDay[dateOnly(p.date)] ??= []).add(p);
+    }
+    void sweep(DateTime day, String from, String note) {
+      final amt = ((bal[from] ?? 0) / 100).floor() * 100.0;
+      if (amt < 100) return;
+      moves.add(MoneyMove(id: newId(), date: day, kind: 'transfer', amount: amt, from: from, to: 'بنك فلسطين', note: note, by: owner.name));
+      bal[from] = bal[from]! - amt;
+    }
+
+    for (var day = start; day.isBefore(today); day = addDays(day, 1)) {
+      for (final p in paysByDay[day] ?? const <Payment>[]) {
+        bal[acc(p)] = (bal[acc(p)] ?? 0) + p.amount;
+      }
+      for (final e in expenses.where((e) => e.method == 'cash' && dateOnly(e.date) == day)) {
+        bal['الصندوق (نقد)'] = (bal['الصندوق (نقد)'] ?? 0) - e.amount;
+      }
+      if (day.weekday == DateTime.thursday) {
+        sweep(day, 'الصندوق (نقد)', 'إيداع أسبوعي');
+        sweep(day, 'البطاقات', 'تسوية البطاقات');
+      }
+      if (day.day == 1) sweep(day, 'بال باي', 'تحويل شهري');
     }
 
     // حجوزات الحصص لهذا الأسبوع
@@ -417,6 +455,7 @@ class DemoData {
       ..addAll(numberedPays)
       ..addAll(checkins)
       ..addAll(expenses)
+      ..addAll(moves)
       ..addAll(bookings)
       ..addAll(leads)
       ..addAll(meas)

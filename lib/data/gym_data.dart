@@ -17,6 +17,7 @@ import '../models/plan.dart';
 import '../models/settings.dart';
 import '../models/subscription.dart';
 import '../services/license.dart';
+import '../services/membership.dart' show GymException;
 
 /// جدول: السجلات في الذاكرة (للسرعة) ونسخة دائمة في قاعدة البيانات.
 class Coll<T extends Entity> {
@@ -68,12 +69,14 @@ class GymData extends ChangeNotifier {
   final coupons = Coll<Coupon>('coupons', Coupon.fromMap);
   final offers = Coll<Offer>('offers', Offer.fromMap);
   final closes = Coll<CashClose>('cash_closes', CashClose.fromMap);
+  final moves = Coll<MoneyMove>('money_moves', MoneyMove.fromMap);
+  final locks = Coll<PeriodLock>('period_locks', PeriodLock.fromMap);
 
   late final Map<Type, Coll> _tables = {
     Member: members, Plan: plans, Subscription: subs, Invoice: invoices, Payment: payments,
     Checkin: checkins, Message: messages, Measurement: measurements, AuditEntry: audit, Staff: staff,
     GymClass: classes, Booking: bookings, Lead: leads, Product: products, Expense: expenses, Coupon: coupons,
-    Offer: offers, CashClose: closes,
+    Offer: offers, CashClose: closes, MoneyMove: moves, PeriodLock: locks,
   };
 
   List<Coll> get tables => _tables.values.toList();
@@ -479,6 +482,23 @@ class GymData extends ChangeNotifier {
       AuditEntry(id: newId(), time: now(), user: userName, action: action, details: details);
 
   Future<void> log(String action, String details) => put(auditEntry(action, details));
+
+  /// آخر يوم في الفترات المقفلة محاسبياً (null = لا إقفال)
+  DateTime? get lockedUntil {
+    DateTime? out;
+    for (final l in locks.all) {
+      if (out == null || l.until.isAfter(out)) out = l.until;
+    }
+    return out;
+  }
+
+  /// يمنع إضافة أو حذف عملية بتاريخ داخل فترة مقفلة
+  void requireOpen(DateTime date) {
+    final l = lockedUntil;
+    if (l != null && !dateOnly(date).isAfter(l)) {
+      throw GymException(tr('الفترة حتى {d} مقفلة محاسبياً. سجّل العملية بتاريخ بعدها', {'d': dayKey(l)}));
+    }
+  }
 
   // ---------------------------------------------------------------------------
   // فهارس سريعة (تُبنى عند الحاجة وتُمسح مع أي تعديل)

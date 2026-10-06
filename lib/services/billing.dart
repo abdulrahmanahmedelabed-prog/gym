@@ -1,3 +1,4 @@
+import '../core/dates.dart';
 import '../core/i18n.dart';
 import '../core/ids.dart';
 import '../core/money.dart';
@@ -146,11 +147,26 @@ class BillingService {
     inv
       ..voided = true
       ..voidReason = reason
+      ..voidedAt = d.now()
       ..installments.clear();
     save
       ..add(inv)
       ..add(d.auditEntry('void', '${inv.number} — $reason'));
     await d.putAll(save);
+  }
+
+  /// إعدام دين: النادي يتنازل عن المتبقي بقرار (عضو سافر، تعذّر التحصيل). يُسجَّل مصروفاً «ديون معدومة».
+  Future<void> writeOff(Invoice inv, String reason) async {
+    if (!d.can(Perm.refund)) throw GymException(tr('ليست لديك صلاحية'));
+    d.require(Feature.accounting);
+    final left = inv.balance;
+    if (inv.voided || left <= 0.001) throw GymException(tr('لا يوجد مبلغ متبقٍ على الفاتورة'));
+    inv
+      ..writtenOff = roundMoney(inv.writtenOff + left)
+      ..writtenOffAt = d.now()
+      ..installments.clear()
+      ..notes = [if (inv.notes != null) inv.notes, tr('دين معدوم: {r}', {'r': reason})].join('\n');
+    await d.putAll([inv, d.auditEntry('writeoff', '${inv.number}: ${fmtMoney(left)} — $reason')]);
   }
 
   /// بيع من متجر النادي (لعضو أو لزائر)
@@ -202,10 +218,19 @@ class BillingService {
       {required DateTime date, required String category, required double amount, String? note, String method = 'cash', String? account}) async {
     if (!d.can(Perm.expenses)) throw GymException(tr('ليست لديك صلاحية المصروفات'));
     if (amount <= 0) throw GymException(tr('اكتب مبلغاً صحيحاً'));
+    d.requireOpen(date);
     final e = Expense(
         id: newId(), date: date, category: category, amount: roundMoney(amount), note: note, by: d.userName, method: method, account: method == 'cash' ? null : account);
     await d.put(e);
     return e;
+  }
+
+  /// حذف مصروف (يُسجَّل في العمليات الحساسة، ولا يُحذف من فترة مقفلة)
+  Future<void> deleteExpense(Expense e) async {
+    if (!d.can(Perm.expenses)) throw GymException(tr('ليست لديك صلاحية المصروفات'));
+    d.requireOpen(e.date);
+    await d.remove(e);
+    await d.log('expense_delete', '${e.category} ${dayKey(e.date)}: ${fmtMoney(e.amount)}');
   }
 
   /// الأقساط المستحقة (لشاشة التحصيل والتذكيرات)
